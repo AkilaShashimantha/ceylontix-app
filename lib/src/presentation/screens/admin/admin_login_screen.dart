@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_textfield.dart';
+import '../../../data/repositories/auth_repository.dart';
+import '../admin/admin_dashboard_screen.dart';
 
 class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({Key? key}) : super(key: key);
@@ -14,6 +16,9 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  bool _isLoading = false;
+  String? _errorText;
+
   @override
   void dispose() {
     // Clean up the controllers when the widget is disposed
@@ -22,16 +27,39 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     super.dispose();
   }
 
-  void _loginAdmin() {
-    // --- TODO: Implement Firebase Auth logic here ---
+  void _loginAdmin() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    // For now, we just print the values
-    print('Admin Email: $email');
-    print('Admin Password: $password');
-    
-    // Here you would call your authentication service
+    setState(() {
+      _isLoading = true;
+      _errorText = null;
+    });
+
+    try {
+      final repo = FirebaseAuthRepository();
+      await repo.signInWithEmailAndPassword(email: email, password: password);
+      if (!mounted) return;
+      // Navigate to dashboard
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const AdminDashboardScreen(),
+        ),
+      );
+      return;
+    } on Exception catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '');
+      setState(() {
+        _errorText = message;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -89,12 +117,23 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                   obscureText: true,
                   prefixIcon: Icons.lock_outline,
                 ),
+
+                if (_errorText != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _errorText!,
+                    style: const TextStyle(color: Colors.red, fontSize: 14),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+
                 const SizedBox(height: 30),
 
                 // --- Login Button ---
                 CustomButton(
-                  onPressed: _loginAdmin,
+                  onPressed: _isLoading ? () {} : _loginAdmin,
                   text: 'Login',
+                  isLoading: _isLoading,
                 ),
               ],
             ),
