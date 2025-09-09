@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "740496630039",
+    "project_id": "ceylontix-app",
+    "storage_bucket": "ceylontix-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:740496630039:android:1bf384d13cbd5564c81752",
+        "android_client_info": {
+          "package_name": "com.example.ceylontix_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDibVdNym9Gs5r4XvDtB-HZCyG7Hk-gDp0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
