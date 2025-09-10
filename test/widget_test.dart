@@ -4,15 +4,15 @@ import 'package:ceylontix_app/firebase_options.dart';
 import 'package:ceylontix_app/main.dart';
 
 void main() {
-  testWidgets('App builds and shows login prompt', (tester) async {
+  testWidgets('App builds and shows events list title', (tester) async {
     TestWidgetsFlutterBinding.ensureInitialized();
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    await tester.pumpWidget(const CeylonTixApp());
+    await tester.pumpWidget(const MyApp());
 
-    // Verify login screen text appears (silent UI, no responses on sign-in attempt).
-    expect(find.text('Please sign in to continue'), findsOneWidget);
+    // Verify events list app bar title appears.
+    expect(find.text('CeylonTix - Upcoming Events'), findsOneWidget);
   });
 }
