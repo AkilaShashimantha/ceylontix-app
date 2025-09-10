@@ -3,6 +3,7 @@ import '../../../data/repositories/firebase_event_repository.dart';
 import '../../../domain/entities/event.dart';
 import '../../widgets/event_card.dart';
 import '../auth/auth_gate.dart';
+import 'profile_screen.dart';
 
 class EventsListScreen extends StatelessWidget {
   const EventsListScreen({Key? key}) : super(key: key);
@@ -15,7 +16,17 @@ class EventsListScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('CeylonTix - Upcoming Events'),
         actions: [
-          // This button provides access to the admin panel
+          // User account/profile
+          IconButton(
+            icon: const Icon(Icons.account_circle_outlined),
+            tooltip: 'My Account',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const ProfileScreen()),
+              );
+            },
+          ),
+          // Admin panel access
           IconButton(
             icon: const Icon(Icons.admin_panel_settings_outlined),
             tooltip: 'Admin Login',

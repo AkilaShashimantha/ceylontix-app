@@ -9,32 +9,39 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Instantiate the repository to access the auth state stream.
     final authRepository = FirebaseAuthRepository();
 
     return StreamBuilder<User?>(
-      // Listen to our repository's auth state stream, not directly to Firebase.
-      // This maintains the separation of concerns.
       stream: authRepository.authStateChanges,
       builder: (context, snapshot) {
-        // Show a loading indicator while connecting to the stream
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
+            body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        // If the snapshot has data (a User object), the user is logged in.
-        if (snapshot.hasData) {
-          // Navigate to the admin dashboard.
-          return const AdminDashboardScreen();
-        } else {
-          // If there's no data, the user is logged out.
-          // Navigate to the login screen.
+        final user = snapshot.data;
+        if (user == null) {
           return const AdminLoginScreen();
         }
+
+        // User is signed in; check for admin claim before allowing access
+        return FutureBuilder<IdTokenResult>(
+          future: user.getIdTokenResult(true),
+          builder: (context, tokenSnap) {
+            if (tokenSnap.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+            final isAdmin = tokenSnap.data?.claims?["admin"] == true;
+            if (isAdmin) {
+              return const AdminDashboardScreen();
+            }
+            // Not admin: show login screen (prevents non-admin users from seeing admin dashboard)
+            return const AdminLoginScreen();
+          },
+        );
       },
     );
   }

@@ -8,45 +8,35 @@ class FirebaseEventRepository implements EventRepository {
   FirebaseEventRepository({FirebaseFirestore? firestore})
       : _firestore = firestore ?? FirebaseFirestore.instance;
 
-  // Get the 'events' collection reference
-  CollectionReference<Map<String, dynamic>> get _eventsCollection => _firestore.collection('events');
+  CollectionReference<Map<String, dynamic>> get _eventsCol =>
+      _firestore.collection('events');
 
   @override
   Future<void> addEvent(Event event) async {
-    try {
-      await _eventsCollection.add(event.toJson());
-    } catch (e) {
-      throw Exception('Error adding event: $e');
-    }
+    await _eventsCol.add(event.toJson());
   }
 
   @override
   Stream<List<Event>> getEventsStream() {
-    return _eventsCollection.snapshots().map((snapshot) {
-      return snapshot.docs.map((doc) => Event.fromFirestore(doc)).toList();
-    });
+    return _eventsCol
+        .orderBy('date')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => Event.fromFirestore(doc))
+            .toList());
   }
 
   @override
   Future<void> deleteEvent(String eventId) async {
-    try {
-      await _eventsCollection.doc(eventId).delete();
-    } catch (e) {
-      throw Exception('Error deleting event: $e');
-    }
+    await _eventsCol.doc(eventId).delete();
   }
 
-  // **NEW**: Implementation to update an existing event document.
   @override
   Future<void> updateEvent(Event event) async {
-    // We must have an event ID to update it.
     if (event.id == null) {
-      throw Exception('Event ID is required to update.');
+      throw ArgumentError('Event id is required to update');
     }
-    try {
-      await _eventsCollection.doc(event.id).update(event.toJson());
-    } catch (e) {
-      throw Exception('Error updating event: $e');
-    }
+    await _eventsCol.doc(event.id).update(event.toJson());
   }
 }
+

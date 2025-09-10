@@ -45,3 +45,5 @@ app.*.map.json
 /android/app/release
 
 lib/firebase_options.dartlib/firebase_option.dart
+functions/service-account-key.json
+functions/node_modules/

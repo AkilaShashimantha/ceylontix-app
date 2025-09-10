@@ -70,7 +70,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             onPressed: () async {
               await _authRepository.signOut();
               if (!context.mounted) return;
-              Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+              Navigator.of(context).popUntil((route) => route.isFirst);
             },
             tooltip: 'Logout',
           ),

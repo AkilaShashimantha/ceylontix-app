@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_textfield.dart';
 import '../../../data/repositories/auth_repository.dart';
@@ -39,8 +40,20 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     try {
       final repo = FirebaseAuthRepository();
       await repo.signInWithEmailAndPassword(email: email, password: password);
+
+      // Verify admin custom claim before allowing access
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('Authentication failed.');
+      }
+      final token = await user.getIdTokenResult(true);
+      final isAdmin = token.claims?['admin'] == true;
+      if (!isAdmin) {
+        await repo.signOut();
+        throw Exception('Access Denied: You do not have admin privileges.');
+      }
+
       if (!mounted) return;
-      // Navigate to dashboard
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => const AdminDashboardScreen(),
