@@ -74,13 +74,14 @@ class EventsListScreen extends StatelessWidget {
                 crossAxisCount = 1; // For mobile phones
               }
 
+              final halfViewportHeight = constraints.maxHeight * 0.5; // 50vh
               return GridView.builder(
                 padding: const EdgeInsets.all(16.0),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: crossAxisCount,
-                  crossAxisSpacing: 16.0, // Spacing between columns
-                  mainAxisSpacing: 16.0,  // Spacing between rows
-                  childAspectRatio: 0.75, // Adjust this ratio to make cards taller or shorter
+                  crossAxisSpacing: 16.0,
+                  mainAxisSpacing: 16.0,
+                  mainAxisExtent: halfViewportHeight, // 50vh height per card
                 ),
                 itemCount: events.length,
                 itemBuilder: (context, index) {

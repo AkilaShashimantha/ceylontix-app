@@ -63,29 +63,28 @@ class EventCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Event Poster Image
-            Hero(
-              tag: 'event_poster_${event.id}', // Unique tag for hero animation
-              child: Image.network(
-                _resolveImageUrl(event.posterUrl),
-                height: 200,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                // Placeholder and error handling for the image
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Container(
-                    height: 200,
-                    color: Colors.grey[300],
-                    child: const Center(child: CircularProgressIndicator()),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    height: 200,
-                    color: Colors.grey[200],
-                    child: const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 50)),
-                  );
-                },
+            Expanded(
+              child: Hero(
+                tag: 'event_poster_${event.id}', // Unique tag for hero animation
+                child: Image.network(
+                  _resolveImageUrl(event.posterUrl),
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  // Placeholder and error handling for the image
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      color: Colors.grey[300],
+                      child: const Center(child: CircularProgressIndicator()),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      color: Colors.grey[200],
+                      child: const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 50)),
+                    );
+                  },
+                ),
               ),
             ),
             // Event Details
