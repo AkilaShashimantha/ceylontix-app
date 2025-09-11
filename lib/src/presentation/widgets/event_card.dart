@@ -11,10 +11,12 @@ class EventCard extends StatelessWidget {
     return '${dt.year}-${two(dt.month)}-${two(dt.day)}';
   }
 
-  // Normalize common share links (e.g., Google Drive) to direct-view URLs
+  // Normalize common share links (Google Drive, FreeImage.host) to direct image URLs
   String _resolveImageUrl(String url) {
+    // Google Drive shared links -> direct view
     if (url.contains('drive.google.com')) {
-      final idMatch = RegExp(r"/d/([^/]+)").firstMatch(url) ?? RegExp(r"[?&]id=([a-zA-Z0-9_-]+)").firstMatch(url);
+      final idMatch = RegExp(r"/d/([^/]+)").firstMatch(url) ??
+          RegExp(r"[?&]id=([a-zA-Z0-9_-]+)").firstMatch(url);
       if (idMatch != null) {
         final id = idMatch.group(1);
         if (id != null && id.isNotEmpty) {
@@ -22,6 +24,23 @@ class EventCard extends StatelessWidget {
         }
       }
     }
+
+    // FreeImage.host share page -> iili.io direct image
+    if (url.contains('freeimage.host')) {
+      try {
+        final uri = Uri.parse(url);
+        final segments = uri.pathSegments;
+        if (segments.isNotEmpty) {
+          final last = segments.last; // e.g., KIH72Bs
+          final id = last.split('.').first; // strip any extension if present
+          if (RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(id)) {
+            // Use standard jpg; the CDN also supports size variants like .md.jpg
+            return 'https://iili.io/$id.jpg';
+          }
+        }
+      } catch (_) {}
+    }
+
     return url;
   }
 

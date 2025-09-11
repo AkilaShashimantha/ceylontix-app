@@ -21,6 +21,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return '${dt.year}-${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}';
   }
 
+  String _resolveImageUrl(String url) {
+    if (url.contains('drive.google.com')) {
+      final idMatch = RegExp(r"/d/([^/]+)").firstMatch(url) ??
+          RegExp(r"[?&]id=([a-zA-Z0-9_-]+)").firstMatch(url);
+      if (idMatch != null) {
+        final id = idMatch.group(1);
+        if (id != null && id.isNotEmpty) {
+          return 'https://drive.google.com/uc?export=view&id=$id';
+        }
+      }
+    }
+    if (url.contains('freeimage.host')) {
+      try {
+        final uri = Uri.parse(url);
+        final segments = uri.pathSegments;
+        if (segments.isNotEmpty) {
+          final last = segments.last;
+          final id = last.split('.').first;
+          if (RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(id)) {
+            return 'https://iili.io/$id.jpg';
+          }
+        }
+      } catch (_) {}
+    }
+    return url;
+  }
+
   void _navigateToEditScreen(Event event) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -109,8 +136,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   onTap: () => _navigateToEditScreen(event),
                   leading: CircleAvatar(
                     backgroundColor: Colors.grey[200],
-                    backgroundImage: event.posterUrl.isNotEmpty ? NetworkImage(event.posterUrl) : null,
-                    child: event.posterUrl.isEmpty ? const Icon(Icons.image_not_supported) : null,
+                    backgroundImage: event.posterUrl.isNotEmpty
+                        ? NetworkImage(_resolveImageUrl(event.posterUrl))
+                        : null,
+                    child: event.posterUrl.isEmpty
+                        ? const Icon(Icons.image_not_supported)
+                        : null,
                   ),
                   title: Text(event.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text('${event.venue}\n${_formatDateTime(event.date)}'),
