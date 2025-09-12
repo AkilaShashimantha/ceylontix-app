@@ -29,7 +29,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   }
 
   void _loginAdmin() async {
-    final email = _emailController.text.trim();
+    // Sanitize: remove all spaces to prevent 'invalid-email' on accidental whitespace
+    final email = _emailController.text.trim().replaceAll(RegExp(r"\s+"), "");
     final password = _passwordController.text.trim();
 
     setState(() {
@@ -72,6 +73,37 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _loginAdminWithGoogle() async {
+    setState(() {
+      _isLoading = true;
+      _errorText = null;
+    });
+    try {
+      final repo = FirebaseAuthRepository();
+      await repo.signInWithGoogle();
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('Authentication failed.');
+      }
+      final token = await user.getIdTokenResult(true);
+      final isAdmin = token.claims?['admin'] == true;
+      if (!isAdmin) {
+        await repo.signOut();
+        throw Exception('Access Denied: You do not have admin privileges.');
+      }
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
+      );
+    } on Exception catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '');
+      setState(() => _errorText = message);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -147,6 +179,13 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                   onPressed: _isLoading ? () {} : _loginAdmin,
                   text: 'Login',
                   isLoading: _isLoading,
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _loginAdminWithGoogle,
+                  icon: const Icon(Icons.g_mobiledata),
+                  label: const Text('Sign in with Google'),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
                 ),
               ],
             ),

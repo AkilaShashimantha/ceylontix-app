@@ -22,9 +22,26 @@ class FirebaseAuthRepository implements AuthRepository {
     try {
       await _firebaseAuth.signInWithEmailAndPassword(email: email, password: password);
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found') throw Exception('No user found for that email.');
-      if (e.code == 'wrong-password') throw Exception('Wrong password provided for that user.');
-      throw Exception('An error occurred during sign-in. Please try again.');
+      switch (e.code) {
+        case 'user-not-found':
+          throw Exception('No user found for that email.');
+        case 'wrong-password':
+          throw Exception('Wrong password provided for that user.');
+        case 'invalid-email':
+          throw Exception('The email address is not valid.');
+        case 'invalid-credential':
+          throw Exception('Invalid email or password.');
+        case 'user-disabled':
+          throw Exception('This account has been disabled.');
+        case 'too-many-requests':
+          throw Exception('Too many attempts. Please try again later.');
+        case 'operation-not-allowed':
+          throw Exception('Email/password sign-in is disabled for this project.');
+        case 'network-request-failed':
+          throw Exception('Network error. Check your connection and try again.');
+        default:
+          throw Exception(e.message ?? 'An error occurred during sign-in. Please try again.');
+      }
     } catch (e) {
       throw Exception('An unexpected error occurred.');
     }

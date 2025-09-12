@@ -4,7 +4,8 @@ import '../screens/user/event_detail_screen.dart';
 
 class EventCard extends StatelessWidget {
   final Event event;
-  const EventCard({Key? key, required this.event}) : super(key: key);
+  final VoidCallback? onTap;
+  const EventCard({Key? key, required this.event, this.onTap}) : super(key: key);
 
   String _formatDate(DateTime dt) {
     String two(int n) => n.toString().padLeft(2, '0');
@@ -53,11 +54,15 @@ class EventCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => EventDetailScreen(event: event),
-            ),
-          );
+          if (onTap != null) {
+            onTap!();
+          } else {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EventDetailScreen(event: event),
+              ),
+            );
+          }
         },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
