@@ -12,6 +12,9 @@ class EventCard extends StatelessWidget {
     return '${dt.year}-${two(dt.month)}-${two(dt.day)}';
   }
 
+  // Build a unique, stable hero tag even if id is null
+  String _heroTag() => 'event_poster_${event.id ?? event.posterUrl.hashCode}';
+
   // Normalize common share links (Google Drive, FreeImage.host) to direct image URLs
   String _resolveImageUrl(String url) {
     // Google Drive shared links -> direct view
@@ -70,7 +73,7 @@ class EventCard extends StatelessWidget {
             // Event Poster Image
             Expanded(
               child: Hero(
-                tag: 'event_poster_${event.id}', // Unique tag for hero animation
+                tag: _heroTag(), // Unique, stable hero tag
                 child: Image.network(
                   _resolveImageUrl(event.posterUrl),
                   width: double.infinity,
