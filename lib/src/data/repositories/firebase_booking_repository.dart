@@ -11,7 +11,7 @@ class FirebaseBookingRepository implements BookingRepository {
       : _firestore = firestore ?? FirebaseFirestore.instance;
 
   @override
-  Future<void> createBooking({
+  Future<String> createBooking({
     required Booking booking,
     required Event event,
     required String tierName,
@@ -20,7 +20,7 @@ class FirebaseBookingRepository implements BookingRepository {
     final eventRef = _firestore.collection('events').doc(event.id);
     final bookingRef = _firestore.collection('bookings').doc();
 
-    return _firestore.runTransaction((transaction) async {
+    await _firestore.runTransaction((transaction) async {
       // 1. Read the event document within the transaction
       final eventSnapshot = await transaction.get(eventRef);
       if (!eventSnapshot.exists) {
@@ -62,5 +62,7 @@ class FirebaseBookingRepository implements BookingRepository {
       // 7. Create the new booking document
       transaction.set(bookingRef, booking.toJson());
     });
+
+    return bookingRef.id;
   }
 }

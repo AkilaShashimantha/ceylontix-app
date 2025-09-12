@@ -38,6 +38,8 @@ dependencies:
   firebase_auth: ^6.0.2
   cloud_firestore: ^6.0.1
   google_sign_in: ^6.1.5
+  payhere_mobilesdk_flutter: ^3.0.4 
+  qr_flutter: ^4.1.0 
 
 dev_dependencies:
   flutter_test:

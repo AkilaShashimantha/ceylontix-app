@@ -3,7 +3,8 @@ import '../entities/event.dart';
 
 // The contract for our booking data source.
 abstract class BookingRepository {
-  Future<void> createBooking({
+  // Returns the created booking document ID
+  Future<String> createBooking({
     required Booking booking,
     required Event event,
     required String tierName,
