@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:payhere_mobilesdk_flutter/payhere_mobilesdk_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PayHereService {
   // Replace with your actual Sandbox credentials from the PayHere dashboard
@@ -17,10 +18,37 @@ class PayHereService {
     required Function(String paymentId) onSuccess,
     required Function(String error) onError,
     required Function() onDismissed,
-  }) {
+  }) async {
+    // Web: open hosted checkout via Cloud Function
+    if (kIsWeb) {
+      final uri = Uri.https(
+        'us-central1-ceylontix-app.cloudfunctions.net',
+        '/payHereCheckout',
+        {
+          'merchant_id': sandboxMerchantId,
+          'order_id': orderId,
+          'items': itemName,
+          'amount': amount.toStringAsFixed(2),
+          'currency': 'LKR',
+          'first_name': customerDetails['firstName'] ?? 'John',
+          'last_name': customerDetails['lastName'] ?? 'Doe',
+          'email': customerDetails['email'] ?? 'no-email@test.com',
+          'phone': customerDetails['phone'] ?? '0771234567',
+          'address': customerDetails['address'] ?? 'No. 1, Galle Road',
+          'city': customerDetails['city'] ?? 'Colombo',
+          'country': 'Sri Lanka',
+          'sandbox': 'true',
+        },
+      );
+      final ok = await launchUrl(uri, webOnlyWindowName: '_blank');
+      if (!ok) {
+        onError('Could not open payment page. Please allow pop-ups and try again.');
+      }
+      return;
+    }
+
     // Guard: PayHere plugin only supports Android/iOS
-    if (kIsWeb ||
-        !(defaultTargetPlatform == TargetPlatform.android ||
+    if (!(defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS)) {
       onError('PayHere is only supported on Android and iOS devices.');
       return;
@@ -68,3 +96,8 @@ class PayHereService {
     }
   }
 }
+
+
+
+
+

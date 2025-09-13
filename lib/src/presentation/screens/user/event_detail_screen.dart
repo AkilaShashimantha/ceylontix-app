@@ -1,12 +1,14 @@
-import 'package:ceylontix_app/src/data/services/payhere_service.dart'; // Import PayHere service
+import 'package:flutter/foundation.dart' show kIsWeb; // Import to check for web platform
 import 'package:ceylontix_app/src/domain/entities/booking.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart'; // Add this import if not present
 import '../../../data/repositories/auth_repository.dart';
 import '../../../data/repositories/firebase_booking_repository.dart';
 import '../../../domain/entities/event.dart';
 import '../../../domain/entities/ticket_tier.dart';
 import 'profile_screen.dart';
 import 'ticket_view_screen.dart';
+import '../../../data/services/payhere_service.dart';
 
 class EventDetailScreen extends StatefulWidget {
   final Event event;
@@ -17,17 +19,12 @@ class EventDetailScreen extends StatefulWidget {
 }
 
 class _EventDetailScreenState extends State<EventDetailScreen> {
-final FirebaseBookingRepository _bookingRepository = FirebaseBookingRepository();
-final FirebaseAuthRepository _authRepository = FirebaseAuthRepository();
+  final FirebaseBookingRepository _bookingRepository = FirebaseBookingRepository();
+  final FirebaseAuthRepository _authRepository = FirebaseAuthRepository();
 
-TicketTier? _selectedTier;
-int _quantity = 1;
-bool _isLoading = false;
-
-  String _formatDateTime(DateTime dt) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${dt.year}-${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}';
-  }
+  TicketTier? _selectedTier;
+  int _quantity = 1;
+  bool _isLoading = false;
 
   void _incrementQuantity() {
     if (_selectedTier != null && _quantity < _selectedTier!.quantity) {
@@ -61,32 +58,80 @@ bool _isLoading = false;
     );
   }
 
-  // UPDATED: This function now initiates the PayHere payment flow.
+  // Main checkout function that decides which flow to use
   Future<void> _handleCheckout() async {
     if (_selectedTier == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a ticket tier.')));
       return;
     }
-
     final currentUser = await _authRepository.authStateChanges.first;
     if (currentUser == null) {
       _showLoginPrompt();
       return;
     }
-
     setState(() => _isLoading = true);
 
-    // Prepare customer details for PayHere
+    // PLATFORM-SPECIFIC PAYMENT LOGIC
+    if (kIsWeb) {
+      // WEB FLOW: Redirect to PayHere website
+      await _handleWebCheckout(currentUser);
+    } else {
+      // MOBILE FLOW: Use the native SDK
+      _handleMobileCheckout(currentUser);
+    }
+  }
+
+  // Handles the Web Checkout Flow
+  Future<void> _handleWebCheckout(currentUser) async {
+    final orderId = '${currentUser.uid}-${DateTime.now().millisecondsSinceEpoch}';
+    final totalAmount = _selectedTier!.price * _quantity;
+    final merchantId = PayHereService.sandboxMerchantId;
+    final currency = 'LKR';
+
+    final uri = Uri.https(
+      'us-central1-ceylontix-app.cloudfunctions.net',
+      '/payHereCheckout',
+      {
+        'merchant_id': merchantId,
+        'order_id': orderId,
+        'items': '${_quantity}x ${_selectedTier!.name} Ticket(s) for ${widget.event.name}',
+        'amount': totalAmount.toStringAsFixed(2),
+        'currency': currency,
+        'first_name': currentUser.displayName?.split(' ').first ?? 'John',
+        'last_name': currentUser.displayName?.split(' ').last ?? 'Doe',
+        'email': currentUser.email ?? '',
+        'phone': '0771234567',
+        'address': 'No. 1, Galle Road',
+        'city': 'Colombo',
+        'country': 'Sri Lanka',
+        'sandbox': 'true',
+      },
+    );
+
+    // Directly open the payment form in a new tab
+    if (!mounted) return;
+    final ok = await launchUrl(uri, webOnlyWindowName: '_blank');
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open payment page. Please allow pop-ups and try again.')),
+
+      );
+    } else {
+      // Optionally, you can create the booking after payment confirmation
+      // await _createBookingInFirestore(currentUser);
+    }
+  }
+
+  // Handles the Mobile Checkout Flow
+  void _handleMobileCheckout(currentUser) {
     final customerDetails = {
       'firstName': currentUser.displayName?.split(' ').first ?? 'John',
       'lastName': currentUser.displayName?.split(' ').last ?? 'Doe',
       'email': currentUser.email ?? 'no-email@test.com',
-      'phone': '0771234567', // You would typically collect this from the user
+      'phone': '0771234567',
       'address': 'No. 1, Galle Road',
       'city': 'Colombo'
     };
-    
-    // Generate a unique Order ID without extra dependencies
     final orderId = '${currentUser.uid}-${DateTime.now().millisecondsSinceEpoch}';
     final totalAmount = _selectedTier!.price * _quantity;
 
@@ -96,29 +141,19 @@ bool _isLoading = false;
       orderId: orderId,
       itemName: '${_quantity}x ${_selectedTier!.name} Ticket(s)',
       customerDetails: customerDetails,
-      onSuccess: (paymentId) {
-        // When payment is successful, create the booking in Firestore
-        print('Payment successful. Payment ID: $paymentId');
-        _createBookingInFirestore(currentUser);
-      },
+      onSuccess: (paymentId) => _createBookingInFirestore(currentUser),
       onError: (error) {
-        // Handle payment failure
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Payment Failed: $error'), backgroundColor: Colors.red),
-        );
-        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Payment Failed: $error'), backgroundColor: Colors.red));
+        if (mounted) setState(() => _isLoading = false);
       },
       onDismissed: () {
-        // Handle user closing the payment window
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payment process was cancelled.'), backgroundColor: Colors.orange),
-        );
-        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment process was cancelled.')));
+        if (mounted) setState(() => _isLoading = false);
       },
     );
   }
-
-  // This function is now called AFTER a successful payment.
+  
+  // Creates the booking record in Firestore after a successful payment
   Future<void> _createBookingInFirestore(currentUser) async {
     try {
       final newBooking = Booking(
@@ -156,6 +191,11 @@ bool _isLoading = false;
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  String _formatDateTime(DateTime dt) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${dt.year}-${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}';
   }
 
   @override
@@ -235,8 +275,7 @@ bool _isLoading = false;
                             : SizedBox(
                                 width: double.infinity,
                                 child: ElevatedButton.icon(
-                                  // This now calls the PayHere checkout
-                                  onPressed: _handleCheckout, 
+                                  onPressed: _handleCheckout,
                                   icon: const Icon(Icons.shopping_cart_checkout),
                                   label: const Text('Proceed to Checkout'),
                                   style: ElevatedButton.styleFrom(
