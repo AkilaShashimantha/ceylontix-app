@@ -5,9 +5,10 @@ import 'package:payhere_mobilesdk_flutter/payhere_mobilesdk_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class PayHereService {
-  // Replace with your actual Sandbox credentials from the PayHere dashboard
-  static const String sandboxMerchantId = "1232005"; // THIS IS A TEST ID, USE YOURS
-  static const String merchantSecret = "MzU1NDkzNTU0MDIzOTA1NzQ4ODQzNTMxOTExMjAyMTIzNjY5OTA4Ng=="; // THIS IS A TEST SECRET, USE YOURS
+  // Using the Sandbox credentials you provided.
+  static const String sandboxMerchantId = "1232005";
+  static const String merchantSecret =
+      "MzgxNjc1NDc1MzQwODQyMTI0NzAyMDk0MzUzNzQzMzcxMzU4OTI0MA==";
 
   static void startPayment({
     required BuildContext context,
@@ -96,8 +97,3 @@ class PayHereService {
     }
   }
 }
-
-
-
-
-

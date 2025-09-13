@@ -1,11 +1,14 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:ceylontix_app/src/domain/entities/booking.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:payhere_mobilesdk_flutter/payhere_mobilesdk_flutter.dart';
 // ** CORRECTED IMPORTS TO RESPECT YOUR PROJECT STRUCTURE **
+import '../../../domain/entities/booking.dart';
 import '../../../data/repositories/auth_repository.dart';
 import '../../../domain/repositories/auth_repository.dart';
 import '../../../data/repositories/firebase_booking_repository.dart';
@@ -13,7 +16,9 @@ import '../../../domain/entities/event.dart';
 import '../../../domain/entities/ticket_tier.dart';
 import 'profile_screen.dart';
 import 'ticket_view_screen.dart';
-import '../../../data/services/payhere_service.dart';
+import 'dart:html' as html; 
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
 class EventDetailScreen extends StatefulWidget {
   final Event event;
@@ -25,6 +30,9 @@ class EventDetailScreen extends StatefulWidget {
 }
 
 class _EventDetailScreenState extends State<EventDetailScreen> {
+  // Using the Sandbox Merchant ID you provided.
+  static const String _sandboxMerchantId = "1232005"; // Your Merchant ID
+
   final FirebaseBookingRepository _bookingRepository = FirebaseBookingRepository();
   // ** LINTER FIX: PROGRAM TO THE INTERFACE AS REQUESTED **
   final AuthRepository _authRepository = FirebaseAuthRepository();
@@ -83,109 +91,179 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
     setState(() => _isLoading = true);
 
-    if (kIsWeb) {
-      await _handleWebCheckout(currentUser);
-    } else {
-      _handleMobileCheckout(currentUser);
-    }
-  }
+    // Create a pending booking first, which gives us a stable orderId
+    final orderId = await _createPendingBooking(currentUser);
 
-  Future<void> _handleWebCheckout(currentUser) async {
-    final orderId = const Uuid().v4();
-    final totalAmount = _selectedTier!.price * _quantity;
-    final merchantId = PayHereService.sandboxMerchantId;
-    final currency = "LKR";
+    if (orderId == null) {
+      // Handle error if pending booking fails
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Could not initiate checkout. Please try again.'),
+            backgroundColor: Colors.red));
+        setState(() => _isLoading = false);
+      }
+      return;
+    }
 
     try {
-      final callable = FirebaseFunctions.instanceFor(region: "us-central1")
-          .httpsCallable('generatePayHereHash');
-          
-      final response = await callable.call<Map<String, dynamic>>({
-        'merchant_id': merchantId,
-        'order_id': orderId,
-        'amount': totalAmount.toString(),
-        'currency': currency,
-      });
-      final String hash = response.data['hash'];
-
-      final Map<String, String> queryParams = {
-        'merchant_id': merchantId,
-        'return_url': 'http://localhost:3000/',
-        'cancel_url': 'http://localhost:3000/',
-        'notify_url': '',
-        'order_id': orderId,
-        'items':
-            '${_quantity}x ${_selectedTier!.name} Ticket(s) for ${widget.event.name}',
-        'amount': totalAmount.toStringAsFixed(2),
-        'currency': currency,
-        'hash': hash,
-        'first_name': currentUser.displayName?.split(' ').first ?? 'John',
-        'last_name': currentUser.displayName?.split(' ').last ?? 'Doe',
-        'email': currentUser.email ?? '',
-        'phone': '0771234567',
-        'address': 'No. 1, Galle Road',
-        'city': 'Colombo',
-        'country': 'Sri Lanka',
-      };
-
-      final Uri payhereUri =
-          Uri.https('sandbox.payhere.lk', '/pay/checkout', queryParams);
-
-      if (!await launchUrl(payhereUri, webOnlyWindowName: '_self')) {
-        throw 'Could not launch ${payhereUri.toString()}';
+      if (kIsWeb) {
+        await _handleWebCheckout(currentUser, orderId);
+      } else {
+        _handleMobileCheckout(currentUser, orderId);
       }
-      await _createBookingInFirestore(currentUser);
-    } catch (e) {
-      debugPrint("Error during web checkout: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text('Web checkout failed. See console for details.'),
-            backgroundColor: Colors.red));
-      }
-      if (mounted) setState(() => _isLoading = false);
+    } finally {
+      // On web, the user is redirected, so we don't need to manage the loading state here.
+      // On mobile, the PayHere SDK callbacks will manage the loading state.
     }
   }
 
-  void _handleMobileCheckout(currentUser) {
-    final customerDetails = {
-      'firstName': currentUser.displayName?.split(' ').first ?? 'John',
-      'lastName': currentUser.displayName?.split(' ').last ?? 'Doe',
-      'email': currentUser.email ?? 'no-email@test.com',
-      'phone': '0771234567',
-      'address': 'No. 1, Galle Road',
-      'city': 'Colombo'
-    };
-    final orderId = const Uuid().v4();
+
+
+String generatePayHereHash({
+  required String merchantId,
+  required String orderId,
+  required String amount,
+  required String currency,
+  required String merchantSecret,
+}) {
+  final secretHash =
+      md5.convert(utf8.encode(merchantSecret)).toString().toUpperCase();
+  final raw = merchantId + orderId + amount + currency + secretHash;
+  return md5.convert(utf8.encode(raw)).toString().toUpperCase();
+}
+
+
+Future<void> _handleWebCheckout(User currentUser, String orderId) async {
+  final totalAmount = _selectedTier!.price * _quantity;
+  final merchantId = _sandboxMerchantId;
+  const merchantSecret = "MzgxNjc1NDc1MzQwODQyMTI0NzAyMDk0MzUzNzQzMzcxMzU4OTI0MA==";
+  final currency = "LKR";
+  final amountFormatted = totalAmount.toStringAsFixed(2);
+
+  final returnUrl = Uri.base.toString();
+  final cancelUrl = Uri.base.toString();
+  const projectId = "ceylontix-app";
+  const region = "us-central1";
+  final notifyUrl = 'https://$region-$projectId.cloudfunctions.net/payhereNotify';
+
+  // Generate secure hash
+  final hash = generatePayHereHash(
+    merchantId: merchantId,
+    orderId: orderId,
+    amount: amountFormatted,
+    currency: currency,
+    merchantSecret: merchantSecret,
+  );
+
+  final Map<String, String> params = {
+    'merchant_id': merchantId,
+    'return_url': returnUrl,
+    'cancel_url': cancelUrl,
+    'notify_url': notifyUrl,
+    'order_id': orderId,
+    'items':
+        '${_quantity}x ${_selectedTier!.name} Ticket(s) for ${widget.event.name}',
+    'amount': amountFormatted,
+    'currency': currency,
+    'first_name': currentUser.displayName?.split(' ').first ?? 'John',
+    'last_name': currentUser.displayName?.split(' ').last ?? 'Doe',
+    'email': currentUser.email ?? '',
+    'phone': '0771234567',
+    'address': 'No. 1, Galle Road',
+    'city': 'Colombo',
+    'country': 'Sri Lanka',
+    'hash': hash, // 👈 critical field
+  };
+
+  final form = html.FormElement()
+    ..method = 'POST'
+    ..action = 'https://sandbox.payhere.lk/pay/checkout';
+
+  params.forEach((key, value) {
+    form.append(html.InputElement()
+      ..type = 'hidden'
+      ..name = key
+      ..value = value);
+  });
+
+  html.document.body!.append(form);
+  form.submit();
+}
+
+
+
+  void _handleMobileCheckout(User currentUser, String orderId) {
     final totalAmount = _selectedTier!.price * _quantity;
 
-    PayHereService.startPayment(
-      context: context,
-      amount: totalAmount,
-      orderId: orderId,
-      itemName: '${_quantity}x ${_selectedTier!.name} Ticket(s)',
-      customerDetails: customerDetails,
-      onSuccess: (paymentId) => _createBookingInFirestore(currentUser),
-      onError: (error) {
+    // **IMPORTANT**: Replace with your project details
+    const projectId = "ceylontix-app"; // Your Firebase Project ID
+    const region = "us-central1"; // The region of your function
+    final notifyUrl =
+        'https://$region-$projectId.cloudfunctions.net/payhereNotify';
+
+    // --- 1. CRITICAL: Set up the Payment Object for SANDBOX ---
+    Map<String, dynamic> paymentObject = {
+      // THIS IS THE MOST IMPORTANT PART FOR TESTING.
+      "sandbox": true,
+
+      // --- 2. Use your SANDBOX credentials ---
+      "merchant_id": _sandboxMerchantId,
+
+      // --- 3. Payment Details ---
+      "notify_url": notifyUrl, // Your backend endpoint
+      "order_id": orderId,
+      "items":
+          '${_quantity}x ${_selectedTier!.name} Ticket(s) for ${widget.event.name}',
+      "amount": totalAmount.toStringAsFixed(2),
+      "currency": "LKR",
+
+      // --- 4. Customer Details (Prefill for a better user experience) ---
+      "first_name": currentUser.displayName?.split(' ').first ?? 'Saman',
+      "last_name": currentUser.displayName?.split(' ').last ?? 'Perera',
+      "email": currentUser.email ?? 'saman.perera@example.com',
+      "phone": "0771234567",
+      "address": "No. 1, Galle Road",
+      "city": "Colombo",
+      "country": "Sri Lanka",
+    };
+
+    // --- 5. Start the Payment Gateway ---
+    PayHere.startPayment(
+      paymentObject,
+      (paymentId) {
+        debugPrint("PayHere Payment Success. Payment Id: $paymentId");
+        // The booking is now handled by the notify_url.
+        // We just show a confirmation message and can navigate away.
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Payment successful! Your ticket is being processed.'),
+            backgroundColor: Colors.green));
+        // Optionally, navigate to a "My Bookings" screen
+        Navigator.of(context).pop();
+      },
+      (error) {
+        debugPrint("PayHere Payment Failed. Error: $error");
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text('Payment Failed: $error'),
               backgroundColor: Colors.red));
+          setState(() => _isLoading = false);
         }
-        if (mounted) setState(() => _isLoading = false);
       },
-      onDismissed: () {
+      () {
+        debugPrint("PayHere Payment Dismissed by User");
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Payment process was cancelled.')));
+          setState(() => _isLoading = false);
         }
-        if (mounted) setState(() => _isLoading = false);
       },
     );
   }
 
-  Future<void> _createBookingInFirestore(currentUser) async {
+  Future<String?> _createPendingBooking(User currentUser) async {
     try {
-      final newBooking = Booking(
+      final pendingBooking = Booking(
         eventId: widget.event.id!,
         eventName: widget.event.name,
         userId: currentUser.uid,
@@ -197,31 +275,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         bookingDate: DateTime.now(),
       );
 
-      final newBookingId = await _bookingRepository.createBooking(
-        booking: newBooking,
-        event: widget.event,
-        tierName: _selectedTier!.name,
-        quantity: _quantity,
-      );
+      final docRef = await FirebaseFirestore.instance
+          .collection('pending_bookings')
+          .add(pendingBooking.toFirestore());
 
-      if (mounted) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(
-          builder: (_) =>
-              TicketViewScreen(booking: newBooking, bookingId: newBookingId),
-        ));
-      }
+      return docRef.id; // This ID is our secure order_id
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Booking Failed: ${e.toString()}'),
-              backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      debugPrint("Error creating pending booking: $e");
+      return null;
     }
   }
 
