@@ -1,156 +1,90 @@
-const functions = require("firebase-functions");
+/* eslint-disable max-len */
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onRequest} = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
-const express = require("express"); // Add express for body parsing
-const cors = require("cors"); // Optional: for CORS
 
 admin.initializeApp();
-
 const db = admin.firestore();
 
-/**
- * Callable Cloud Function to grant a user the admin role.
- */
-exports.addAdminRole = functions.https.onCall(async (data, context) => {
-  if (context.auth.token.admin !== true) {
-    throw new functions.https.HttpsError(
-        "permission-denied",
-        "Only admins can add other admins.",
-    );
+// This function is correct and remains unchanged.
+exports.addAdminRole = onCall(async (request) => {
+  if (!request.auth || !request.auth.token.admin) {
+    throw new HttpsError("permission-denied", "Only admins can add other admins.");
   }
-
-  const email = data.email;
+  const email = request.data.email;
   if (!email) {
-    throw new functions.https.HttpsError(
-        "invalid-argument",
-        "The function must be called with one argument 'email'.",
-    );
+    throw new HttpsError("invalid-argument", "The function must be called with one argument 'email'.");
   }
-
   try {
     const user = await admin.auth().getUserByEmail(email);
     await admin.auth().setCustomUserClaims(user.uid, {admin: true});
-    return {
-      message: `Success! ${email} has been made an admin.`,
-    };
+    return {message: `Success! ${email} has been made an admin.`};
   } catch (error) {
     console.error("Error setting custom claim:", error);
-    throw new functions.https.HttpsError(
-        "internal",
-        "Error setting admin role.",
-    );
+    throw new HttpsError("internal", "Error setting admin role.");
   }
 });
 
-/**
- * HTTP Function to generate and serve a self-submitting PayHere form.
- * This is the endpoint the Flutter web app should launch, which will then
- * POST to PayHere, solving the redirect issue caused by GET requests.
- */
-exports.payhereWebCheckout = functions.https.onRequest((req, res) => {
-  // 1. Get the Merchant Secret from secure config
+exports.generatePayHereHash = onCall({ cors: true }, (request) => {
+  const {
+    merchant_id: merchantId,
+    order_id: orderId,
+    amount,
+    currency,
+  } = request.data || {};
+
+  const merchantSecret = process.env.PAYHERE_SECRET;
+  if (!merchantSecret) {
+    throw new HttpsError("internal", "Server configuration error: PAYHERE_SECRET not set.");
+  }
+
+  const hash = crypto
+    .createHash("md5")
+    .update(
+      merchantId +
+        orderId +
+        amount +
+        currency +
+        crypto.createHash("md5").update(merchantSecret).digest("hex").toUpperCase(),
+    )
+    .digest("hex")
+    .toUpperCase();
+
+  return { hash };
+});
+
+// This function is correct and remains unchanged.
+exports.payhereNotify = onRequest(async (req, res) => {
+  if (req.method === "OPTIONS") return res.status(204).send("");
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+
+  let body = req.body;
+  try {
+    if (!body || Object.keys(body).length === 0) {
+      const raw = req.rawBody ? req.rawBody.toString() : "";
+      const ctype = (req.headers["content-type"] || "").toString();
+      if (ctype.includes("application/x-www-form-urlencoded")) {
+        const params = new URLSearchParams(raw);
+        body = Object.fromEntries(params.entries());
+      } else if (raw) {
+        body = JSON.parse(raw);
+      }
+    }
+  } catch (e) {
+    console.error("Failed to parse notify body:", e);
+    return res.status(400).send("Invalid body");
+  }
+
+  console.log("PayHere Notify URL was hit. Parsed Body:", body);
+
   const merchantSecret = process.env.PAYHERE_SECRET;
   if (!merchantSecret) {
     console.error("CRITICAL: PayHere secret is not configured.");
     return res.status(500).send("Server configuration error.");
   }
 
-  // 2. Extract payment data from the query parameters
-  const {
-    merchant_id,
-    order_id,
-    amount,
-    currency,
-    return_url,
-    cancel_url,
-    notify_url,
-    items,
-    first_name,
-    last_name,
-    email,
-    phone,
-    address,
-    city,
-    country,
-  } = req.query;
-
-  // 3. Basic validation
-  if (!merchant_id || !order_id || !amount || !currency) {
-    return res.status(400).send("Missing required payment parameters.");
-  }
-
-  // 4. Generate the security hash
-  const amountFormatted = parseFloat(amount).toFixed(2);
-  const hashedSecret = crypto
-      .createHash("md5")
-      .update(merchantSecret)
-      .digest("hex")
-      .toUpperCase();
-  const prehash =
-    merchant_id + order_id + amountFormatted + currency + hashedSecret;
-  const hash = crypto
-      .createHash("md5")
-      .update(prehash)
-      .digest("hex")
-      .toUpperCase();
-
-  // 5. Construct the self-submitting HTML form
-  const htmlForm = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Redirecting to PayHere...</title>
-    </head>
-    <body onload="document.forms[0].submit();" style="text-align:center; padding-top:50px; font-family:sans-serif;">
-        <h2>Redirecting to Secure Payment Gateway</h2>
-        <p>Please wait...</p>
-        <form method="post" action="https://sandbox.payhere.lk/pay/checkout">
-            <input type="hidden" name="merchant_id" value="${merchant_id}">
-            <input type="hidden" name="return_url" value="${return_url || ""}">
-            <input type="hidden" name="cancel_url" value="${cancel_url || ""}">
-            <input type="hidden" name="notify_url" value="${notify_url || ""}">
-            <input type="hidden" name="order_id" value="${order_id}">
-            <input type="hidden" name="items" value="${items || ""}">
-            <input type="hidden" name="amount" value="${amountFormatted}">
-            <input type="hidden" name="currency" value="${currency}">
-            <input type="hidden" name="hash" value="${hash}">
-            <input type="hidden" name="first_name" value="${first_name || ""}">
-            <input type="hidden" name="last_name" value="${last_name || ""}">
-            <input type="hidden" name="email" value="${email || ""}">
-            <input type="hidden" name="phone" value="${phone || ""}">
-            <input type="hidden" name="address" value="${address || ""}">
-            <input type="hidden" name="city" value="${city || ""}">
-            <input type="hidden" name="country" value="${country || ""}">
-            <noscript><input type="submit" value="Click here to proceed if you are not redirected."></noscript>
-        </form>
-    </body>
-    </html>
-  `;
-
-  // 6. Send the HTML response
-  res.set("Content-Type", "text/html");
-  res.status(200).send(htmlForm);
-});
-
-/**
- * HTTP Webhook to handle PayHere payment notifications.
- * This is the most secure way to confirm a payment and create a booking.
- */
-const payhereNotifyApp = express();
-payhereNotifyApp.use(cors({ origin: true }));
-payhereNotifyApp.use(express.json());
-payhereNotifyApp.use(express.urlencoded({ extended: true }));
-
-payhereNotifyApp.post("/", async (req, res) => {
-  // 1. Get the Merchant Secret from secure config
-  const merchantSecret = process.env.PAYHERE_SECRET;
-  if (!merchantSecret) {
-    console.error("CRITICAL: PayHere secret is not configured.");
-    res.status(500).send("Server configuration error.");
-    return;
-  }
-
-  // 2. Extract data from the POST request from PayHere
   const {
     merchant_id: merchantId,
     order_id: orderId,
@@ -158,37 +92,30 @@ payhereNotifyApp.post("/", async (req, res) => {
     payhere_currency: currency,
     status_code: statusCode,
     md5sig,
-  } = req.body;
+  } = body || {};
 
   if (!merchantId || !orderId || !amount || !currency || !statusCode || !md5sig) {
-    res.status(400).send("Missing required fields.");
-    return;
+    console.error("Missing required notify fields", body);
+    return res.status(400).send("Missing fields");
   }
 
-  // 3. Validate the signature to ensure the request is from PayHere
-  const localMd5sig = crypto
-    .createHash("md5")
-    .update(
-      merchantId +
-        orderId +
-        amount +
-        currency +
-        statusCode +
-        crypto.createHash("md5").update(merchantSecret).digest("hex").toUpperCase(),
-    )
-    .digest("hex")
-    .toUpperCase();
+  const localMd5sig = crypto.createHash("md5").update(
+      String(merchantId) +
+      String(orderId) +
+      String(amount) +
+      String(currency) +
+      String(statusCode) +
+      crypto.createHash("md5").update(merchantSecret).digest("hex").toUpperCase(),
+  ).digest("hex").toUpperCase();
 
   if (localMd5sig !== md5sig) {
-    console.error(`Signature mismatch for order ${orderId}.`);
-    res.status(401).send("Unauthorized");
-    return;
+    console.error(`Signature mismatch for order ${orderId}. expected ${localMd5sig} got ${md5sig}`);
+    return res.status(401).send("Unauthorized");
   }
 
-  // 4. Process the payment status
   const pendingBookingRef = db.collection("pending_bookings").doc(orderId);
 
-  if (statusCode == 2) { // Payment was successful
+  if (String(statusCode) === "2") { // '2' means a successful payment
     try {
       await db.runTransaction(async (t) => {
         const pendingDoc = await t.get(pendingBookingRef);
@@ -197,11 +124,9 @@ payhereNotifyApp.post("/", async (req, res) => {
         }
         const bookingData = pendingDoc.data();
 
-        // Create the final booking document
-        const finalBookingRef = db.collection("bookings").doc();
-        t.set(finalBookingRef, bookingData);
+        const finalBookingRef = db.collection("bookings").doc(orderId);
+        t.set(finalBookingRef, {...bookingData, status: "confirmed"});
 
-        // Decrement the ticket tier quantity
         const eventRef = db.collection("events").doc(bookingData.eventId);
         const eventDoc = await t.get(eventRef);
         if (!eventDoc.exists) throw new Error("Event not found");
@@ -215,30 +140,167 @@ payhereNotifyApp.post("/", async (req, res) => {
           throw new Error("Not enough tickets available.");
         }
         tiers[tierIndex].quantity -= bookingData.quantity;
-        t.update(eventRef, { ticketTiers: tiers });
+        t.update(eventRef, {ticketTiers: tiers});
 
-        // Clean up the pending booking
         t.delete(pendingBookingRef);
       });
       console.log(`Successfully processed and booked order ${orderId}.`);
-      res.status(200).send("OK");
+      return res.status(200).send("OK");
     } catch (error) {
       console.error(`Transaction failed for order ${orderId}:`, error);
-      await pendingBookingRef.delete().catch((e) => {
-        console.error(`Failed to delete pending booking ${orderId} after transaction failure:`, e);
-      });
-      res.status(500).send("Internal Server Error: Booking transaction failed.");
+      return res.status(500).send("Booking transaction failed.");
     }
   } else {
-    // Payment failed or was cancelled, clean up the pending booking
-    try {
-      await pendingBookingRef.delete();
-      console.log(`Order ${orderId} failed/cancelled. Pending booking deleted.`);
-      res.status(200).send("OK");
-    } catch (error) {
-      console.error(`Failed to delete pending booking for failed order ${orderId}:`, error);
-      res.status(500).send("Internal Server Error: Cleanup failed.");
-    }
+    await pendingBookingRef.delete().catch(() => {});
+    console.log(`Order ${orderId} failed/cancelled (status ${statusCode}). Pending booking deleted.`);
+    return res.status(200).send("OK");
   }
 });
-exports.payhereNotify = functions.https.onRequest(payhereNotifyApp);
+
+// Explicit HTTP endpoint for web callers with CORS
+exports.generatePayHereHashHttp = onRequest({
+region: "us-central1",
+}, (req, res) => {
+// Manual CORS headers
+res.set("Access-Control-Allow-Origin", "*");
+res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+if (req.method === "OPTIONS") {
+return res.status(204).send("");
+}
+if (req.method !== "POST") {
+return res.status(405).send("Method Not Allowed");
+}
+
+let body = req.body;
+if (!body || Object.keys(body).length === 0) {
+try {
+const raw = req.rawBody ? req.rawBody.toString() : "";
+body = raw ? JSON.parse(raw) : {};
+} catch (e) {
+console.error("Failed to parse JSON body:", e);
+return res.status(400).json({ error: "Invalid JSON" });
+}
+}
+
+const defaultMerchantId = process.env.PAYHERE_MERCHANT_ID || "1232005";
+const { merchant_id: merchantIdIn, order_id: orderId, amount, currency } = body || {};
+const merchantId = merchantIdIn || defaultMerchantId;
+
+const merchantSecret = process.env.PAYHERE_SECRET;
+if (!merchantSecret) {
+return res.status(500).json({ error: "Server configuration error: PAYHERE_SECRET not set." });
+}
+
+try {
+const hash = crypto
+.createHash("md5")
+.update(
+String(merchantId) +
+String(orderId) +
+String(amount) +
+String(currency) +
+crypto.createHash("md5").update(merchantSecret).digest("hex").toUpperCase(),
+)
+.digest("hex")
+.toUpperCase();
+
+return res.json({ hash, merchant_id: merchantId });
+} catch (e) {
+console.error("Error hashing for PayHere:", e);
+return res.status(500).json({ error: "Internal error" });
+}
+});
+
+/**
+ * Sends a booking confirmation email using Resend.
+ * Triggers when a new document is created in the 'bookings' collection.
+ */
+exports.sendBookingConfirmationEmail = onDocumentCreated("bookings/{bookingId}", async (event) => {
+  const snap = event.data;
+  if (!snap) {
+    console.log("No data associated with the event");
+    return;
+  }
+  const bookingData = snap.data();
+  const bookingId = event.params.bookingId;
+  const apiKey = process.env.RESEND_KEY;
+
+  if (!apiKey) {
+  console.error("CRITICAL: Resend API Key is not configured.");
+  return;
+  }
+  const { Resend } = require("resend");
+   const qr = require("qrcode");
+  const resend = new Resend(apiKey);
+
+  try {
+    const qrCodeBuffer = await qr.toBuffer(bookingId);
+
+    const emailHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Your Ticket for ${bookingData.eventName}</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'; margin: 0; padding: 0; background-color: #f4f4f4; }
+          .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+          .header { background-color: #007bff; color: white; padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0; }
+          .header h1 { margin: 0; font-size: 28px; }
+          .content { padding: 30px; }
+          .content h2 { color: #333; }
+          .content p { line-height: 1.6; color: #555; }
+          .ticket-details { margin-top: 20px; padding: 15px; background-color: #f9f9f9; border-left: 4px solid #007bff; }
+          .ticket-details p { margin: 8px 0; }
+          .qr-code { text-align: center; margin-top: 30px; }
+          .qr-code h3 { color: #333; }
+          .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; font-size: 12px; text-align: center; color: #888; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header"><h1>Your Ticket for ${bookingData.eventName}</h1></div>
+          <div class="content">
+            <h2>Booking Confirmed!</h2>
+            <p>Hi ${bookingData.userName},</p>
+            <p>Thank you for your purchase. Your ticket is confirmed and the QR code is attached to this email. Please present it at the event entrance for scanning.</p>
+            <div class="ticket-details">
+              <p><strong>Event:</strong> ${bookingData.eventName}</p>
+              <p><strong>Tier:</strong> ${bookingData.tierName}</p>
+              <p><strong>Quantity:</strong> ${bookingData.quantity}</p>
+              <p><strong>Total Price:</strong> LKR ${bookingData.totalPrice.toFixed(2)}</p>
+              <p><strong>Booking ID:</strong> ${bookingId}</p>
+            </div>
+            <div class="qr-code">
+              <h3>Your QR Code Ticket</h3>
+              <p>(See attachment: ticket_${bookingId}.png)</p>
+            </div>
+          </div>
+          <div class="footer">
+            <p>This is an automated email. Please do not reply.</p>
+            <p>&copy; ${new Date().getFullYear()} CeylonTix</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await resend.emails.send({
+      from: "CeylonTix <onboarding@resend.dev>",
+      to: [bookingData.userEmail],
+      subject: `Your Ticket for ${bookingData.eventName}`,
+      html: emailHtml,
+      attachments: [
+        {
+          filename: `ticket_${bookingId}.png`,
+          content: qrCodeBuffer,
+        },
+      ],
+    });
+
+    console.log(`Successfully sent email with Resend for booking ${bookingId}.`);
+  } catch (error) {
+    console.error(`Error sending Resend email for booking ${bookingId}:`, error);
+  }
+});

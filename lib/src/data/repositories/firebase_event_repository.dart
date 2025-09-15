@@ -38,5 +38,16 @@ class FirebaseEventRepository implements EventRepository {
     }
     await _eventsCol.doc(event.id).update(event.toJson());
   }
+
+  @override
+  Stream<Event> getEventStream(String eventId) {
+    return _eventsCol.doc(eventId).snapshots().map((doc) {
+      if (!doc.exists) {
+        throw Exception('Event not found!');
+      }
+      return Event.fromFirestore(doc);
+    });
+  }
 }
+
 

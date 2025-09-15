@@ -25,7 +25,7 @@ class AuthGate extends StatelessWidget {
           return const AdminLoginScreen();
         }
 
-        // User is signed in; check for admin claim before allowing access
+        // User is signed in; check for admin custom claim before allowing access
         return FutureBuilder<IdTokenResult>(
           future: user.getIdTokenResult(true),
           builder: (context, tokenSnap) {

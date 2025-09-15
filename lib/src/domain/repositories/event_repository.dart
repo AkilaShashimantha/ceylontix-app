@@ -10,4 +10,6 @@ abstract class EventRepository {
 
   // **NEW**: A method to update an existing event.
   Future<void> updateEvent(Event event);
+
+  Stream<Event> getEventStream(String eventId);
 }

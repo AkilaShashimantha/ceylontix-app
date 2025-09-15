@@ -2,14 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:payhere_mobilesdk_flutter/payhere_mobilesdk_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class PayHereService {
-  // Using the Sandbox credentials you provided.
-  static const String sandboxMerchantId = "1232005";
-  static const String merchantSecret =
-      "MzgxNjc1NDc1MzQwODQyMTI0NzAyMDk0MzUzNzQzMzcxMzU4OTI0MA==";
+  // Use your actual Sandbox Merchant ID here
+  static const String sandboxMerchantId = "1232005"; 
 
+  // This service is now ONLY for mobile payments.
   static void startPayment({
     required BuildContext context,
     required double amount,
@@ -19,48 +17,23 @@ class PayHereService {
     required Function(String paymentId) onSuccess,
     required Function(String error) onError,
     required Function() onDismissed,
-  }) async {
-    // Web: open hosted checkout via Cloud Function
+  }) {
+    // Guard: This method is not for web. The web has its own checkout flow.
     if (kIsWeb) {
-      final uri = Uri.https(
-        'us-central1-ceylontix-app.cloudfunctions.net',
-        '/payHereCheckout',
-        {
-          'merchant_id': sandboxMerchantId,
-          'order_id': orderId,
-          'items': itemName,
-          'amount': amount.toStringAsFixed(2),
-          'currency': 'LKR',
-          'first_name': customerDetails['firstName'] ?? 'John',
-          'last_name': customerDetails['lastName'] ?? 'Doe',
-          'email': customerDetails['email'] ?? 'no-email@test.com',
-          'phone': customerDetails['phone'] ?? '0771234567',
-          'address': customerDetails['address'] ?? 'No. 1, Galle Road',
-          'city': customerDetails['city'] ?? 'Colombo',
-          'country': 'Sri Lanka',
-          'sandbox': 'true',
-        },
-      );
-      final ok = await launchUrl(uri, webOnlyWindowName: '_blank');
-      if (!ok) {
-        onError('Could not open payment page. Please allow pop-ups and try again.');
-      }
+      onError('This payment method is for mobile devices only.');
       return;
     }
 
-    // Guard: PayHere plugin only supports Android/iOS
-    if (!(defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS)) {
-      onError('PayHere is only supported on Android and iOS devices.');
-      return;
-    }
+    // This must match the URL of your deployed 'payhereNotify' function
+    const notifyUrl = 'https://us-central1-ceylontix-app.cloudfunctions.net/payhereNotify';
 
-    // Payment details configuration
-    Map paymentObject = {
-      "sandbox": true, // Set to true for Sandbox, false for Production
+    // Payment details configuration for the native mobile SDK
+    Map<String, dynamic> paymentObject = {
+      "sandbox": true,
       "merchant_id": sandboxMerchantId,
-      "merchant_secret": merchantSecret,
-      "notify_url": "https://your-backend.com/notify", // You can leave this empty for now
+      // NOTE: The merchant_secret is NOT required for mobile SDK initialization.
+      // It is only used for server-side hash generation.
+      "notify_url": notifyUrl, // CRITICAL: This now points to your backend webhook
       "order_id": orderId,
       "items": itemName,
       "amount": amount.toStringAsFixed(2),
@@ -91,7 +64,7 @@ class PayHereService {
         },
       );
     } on MissingPluginException catch (_) {
-      onError('Payment plugin not available. Perform a full restart on a real Android/iOS device or emulator after adding payhere_mobilesdk_flutter.');
+      onError('Payment plugin not available. Please restart the app on a real Android/iOS device or emulator.');
     } catch (e) {
       onError('Payment failed to start: ${e.toString()}');
     }

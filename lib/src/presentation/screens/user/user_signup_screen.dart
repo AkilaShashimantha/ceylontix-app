@@ -1,4 +1,4 @@
-    import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../../data/repositories/auth_repository.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_textfield.dart';
@@ -96,4 +96,3 @@ class _UserSignUpScreenState extends State<UserSignUpScreen> {
     );
   }
 }
-

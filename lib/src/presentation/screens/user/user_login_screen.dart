@@ -121,7 +121,7 @@ import '../../widgets/custom_textfield.dart';
     }
 
     class _GoogleGIcon extends StatelessWidget {
-      const _GoogleGIcon({super.key});
+      const _GoogleGIcon();
 
       @override
       Widget build(BuildContext context) {
@@ -133,4 +133,3 @@ import '../../widgets/custom_textfield.dart';
         );
       }
     }
-    

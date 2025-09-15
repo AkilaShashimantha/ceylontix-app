@@ -180,6 +180,13 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                   text: 'Login',
                   isLoading: _isLoading,
                 ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _loginAdminWithGoogle,
+                  icon: const Icon(Icons.g_mobiledata),
+                  label: const Text('Sign in with Google'),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
+                ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: _isLoading ? null : _loginAdminWithGoogle,

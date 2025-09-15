@@ -1,5 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:convert';
+import 'dart:html' as html;
 import '../../../data/repositories/firebase_event_repository.dart';
 import '../../../domain/entities/event.dart';
 import '../../widgets/event_card.dart';
@@ -16,8 +19,80 @@ class EventsListScreen extends StatefulWidget {
 }
 
 class _EventsListScreenState extends State<EventsListScreen> {
-  final FirebaseEventRepository _eventRepository = FirebaseEventRepository();
-  final FirebaseAuthRepository _authRepository = FirebaseAuthRepository(); // Auth repository instance
+final FirebaseEventRepository _eventRepository = FirebaseEventRepository();
+final FirebaseAuthRepository _authRepository = FirebaseAuthRepository(); // Auth repository instance
+
+@override
+void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _handlePayHereReturn());
+  }
+
+  Future<void> _handlePayHereReturn() async {
+    final orderId = Uri.base.queryParameters['order_id'];
+    if (orderId == null || orderId.isEmpty) return;
+    debugPrint('Detected PayHere return with order_id=$orderId');
+
+    try {
+      final pendingRef = FirebaseFirestore.instance.collection('pending_bookings').doc(orderId);
+      final snap = await pendingRef.get();
+      Map<String, dynamic>? data;
+      if (snap.exists) {
+        data = snap.data() as Map<String, dynamic>;
+      } else {
+        // fallback to localStorage if pending doc was not created due to rules
+        final key = 'ph_pending_' + orderId;
+        final raw = html.window.localStorage[key];
+        if (raw != null) {
+          data = Map<String, dynamic>.from(jsonDecode(raw) as Map<String, dynamic>);
+        }
+      }
+      if (data == null) return;
+
+      await FirebaseFirestore.instance.runTransaction((t) async {
+        final eventRef = FirebaseFirestore.instance.collection('events').doc(data!['eventId']);
+        final eventSnap = await t.get(eventRef);
+        if (!eventSnap.exists) {
+          throw Exception('Event not found');
+        }
+        final eventData = eventSnap.data() as Map<String, dynamic>;
+        final List<dynamic> tiers = List<dynamic>.from(eventData['ticketTiers']);
+        final int idx = tiers.indexWhere((e) => e['name'] == data!['tierName']);
+        if (idx == -1) throw Exception('Tier not found');
+        if ((tiers[idx]['quantity'] as int) < (data!['quantity'] as int)) {
+          throw Exception('Not enough tickets');
+        }
+        tiers[idx]['quantity'] = (tiers[idx]['quantity'] as int) - (data!['quantity'] as int);
+        t.update(eventRef, {'ticketTiers': tiers});
+
+        final bookingRef = FirebaseFirestore.instance.collection('bookings').doc(orderId);
+        t.set(bookingRef, {
+          'eventId': data!['eventId'],
+          'eventName': data!['eventName'],
+          'userId': data!['userId'],
+          'userName': data!['userName'],
+          'userEmail': data!['userEmail'],
+          'tierName': data!['tierName'],
+          'quantity': data!['quantity'],
+          'totalPrice': (data!['totalPrice'] as num).toDouble(),
+          'bookingDate': Timestamp.fromDate(DateTime.parse(data!['bookingDate'] ?? DateTime.now().toIso8601String())),
+          'status': 'confirmed',
+        });
+        if (snap.exists) {
+          t.delete(pendingRef);
+        }
+      });
+
+      // cleanup localStorage
+      html.window.localStorage.remove('ph_pending_' + orderId);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment confirmed. Booking created.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to confirm booking: $e'), backgroundColor: Colors.red));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -174,4 +249,3 @@ class _EventsListScreenState extends State<EventsListScreen> {
     );
   }
 }
-
