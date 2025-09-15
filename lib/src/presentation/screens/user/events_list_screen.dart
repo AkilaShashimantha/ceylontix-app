@@ -9,7 +9,8 @@ import '../../widgets/event_card.dart';
 import 'event_detail_screen.dart';
 import 'profile_screen.dart';
 import '../admin/admin_dashboard_screen.dart';
-import '../../../data/repositories/auth_repository.dart'; 
+import '../../../data/repositories/auth_repository.dart';
+import '../../widgets/app_footer.dart';
 
 class EventsListScreen extends StatefulWidget {
   const EventsListScreen({Key? key}) : super(key: key);
@@ -19,13 +20,29 @@ class EventsListScreen extends StatefulWidget {
 }
 
 class _EventsListScreenState extends State<EventsListScreen> {
-final FirebaseEventRepository _eventRepository = FirebaseEventRepository();
-final FirebaseAuthRepository _authRepository = FirebaseAuthRepository(); // Auth repository instance
+  final FirebaseEventRepository _eventRepository = FirebaseEventRepository();
+  final FirebaseAuthRepository _authRepository = FirebaseAuthRepository();
 
-@override
-void initState() {
+  // Search state
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _handlePayHereReturn());
+    _searchController.addListener(() {
+      final next = _searchController.text.trim();
+      if (next != _query) {
+        setState(() => _query = next.toLowerCase());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _handlePayHereReturn() async {
@@ -96,22 +113,53 @@ void initState() {
 
   @override
   Widget build(BuildContext context) {
-    // Use LayoutBuilder for responsive column count
+    final width = MediaQuery.of(context).size.width;
+    final bool isDesktop = width >= 1000;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('CeylonTix - Upcoming Events'),
         backgroundColor: Theme.of(context).primaryColor,
-        // Use a StreamBuilder to dynamically change the app bar actions based on auth state
+        elevation: 4,
+        toolbarHeight: isDesktop ? 90 : kToolbarHeight,
+        leadingWidth: isDesktop ? 140 : 80,
+        leading: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12.0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Image.asset(
+              'assets/logo/app_logo.png',
+              height: isDesktop ? 56 : 40,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+        title: const Text(
+          'CeylonTix - Upcoming Events',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        centerTitle: false,
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(isDesktop ? 80 : 70),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: _SearchBar(
+              controller: _searchController,
+              isDesktop: isDesktop,
+              onClear: () {
+                _searchController.clear();
+                FocusScope.of(context).unfocus();
+              },
+            ),
+          ),
+        ),
         actions: [
           StreamBuilder<User?>(
             stream: _authRepository.authStateChanges,
             builder: (context, snapshot) {
-              // If user is logged in, show profile avatar
               if (snapshot.connectionState == ConnectionState.active && snapshot.hasData) {
                 final user = snapshot.data!;
                 return Row(
                   children: [
-                    // Admin button visible only if the user has admin claim
                     FutureBuilder<IdTokenResult>(
                       future: user.getIdTokenResult(true),
                       builder: (context, tokenSnap) {
@@ -153,7 +201,6 @@ void initState() {
                 );
               }
 
-              // If user is not logged in, show Sign In and Sign Up buttons
               return Row(
                 children: [
                   TextButton(
@@ -186,66 +233,143 @@ void initState() {
           ),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          // Determine number of columns based on screen width
-          int crossAxisCount;
-          if (constraints.maxWidth > 1200) {
-            crossAxisCount = 3; // Large screens
-          } else if (constraints.maxWidth > 800) {
-            crossAxisCount = 2; // Medium screens (tablets)
-          } else {
-            crossAxisCount = 1; // Small screens (phones)
-          }
+      body: Column(
+        children: [
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                int crossAxisCount;
+                if (constraints.maxWidth > 1200) {
+                  crossAxisCount = 4;
+                } else if (constraints.maxWidth > 800) {
+                  crossAxisCount = 3;
+                } else {
+                  crossAxisCount = 2;
+                }
 
-          return StreamBuilder<List<Event>>(
-            stream: _eventRepository.getEventsStream(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(child: Text('An error occurred: ${snapshot.error}'));
-              }
-              if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Center(
-                  child: Text(
-                    'No events available at the moment.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                );
-              }
-
-              final events = snapshot.data!;
-
-              return GridView.builder(
-                padding: const EdgeInsets.all(16.0),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  childAspectRatio: 0.8, // Adjust aspect ratio for better card appearance
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                ),
-                itemCount: events.length,
-                itemBuilder: (context, index) {
-                  final event = events[index];
-                  return EventCard(
-                    event: event,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => EventDetailScreen(event: event),
+                return StreamBuilder<List<Event>>(
+                  stream: _eventRepository.getEventsStream(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(child: Text('An error occurred: ${snapshot.error}'));
+                    }
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return const Center(
+                        child: Text(
+                          'No events available at the moment.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 18, color: Colors.grey),
                         ),
                       );
-                    },
-                  );
-                },
+                    }
+
+                    final events = snapshot.data!;
+                    final filtered = _query.isEmpty
+                        ? events
+                        : events.where((e) => e.name.toLowerCase().contains(_query)).toList();
+
+                    if (filtered.isEmpty) {
+                      return const Center(
+                        child: Text('No events match your search.', style: TextStyle(color: Colors.grey)),
+                      );
+                    }
+
+                    final sidePad = constraints.maxWidth >= 1200
+                        ? constraints.maxWidth * (2 / 12)
+                        : 16.0;
+
+                    return GridView.builder(
+                      padding: EdgeInsets.fromLTRB(sidePad, 16, sidePad, 16),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        childAspectRatio: 0.8,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                      ),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final event = filtered[index];
+                        return EventCard(
+                          event: event,
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => EventDetailScreen(event: event),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: const AppFooter(),
+    );
+  }
+}
+
+class _SearchBar extends StatelessWidget {
+  final TextEditingController controller;
+  final bool isDesktop;
+  final VoidCallback onClear;
+
+  const _SearchBar({
+    required this.controller,
+    required this.isDesktop,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final double height = isDesktop ? 50 : 44;
+
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2), spreadRadius: 0),
+        ],
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 12),
+          const Icon(Icons.search, color: Colors.grey),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              textInputAction: TextInputAction.search,
+              decoration: const InputDecoration(
+                hintText: 'Search events by name...',
+                hintStyle: TextStyle(color: Colors.grey),
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, _) {
+              if (value.text.isEmpty) return const SizedBox(width: 12);
+              return IconButton(
+                tooltip: 'Clear',
+                icon: const Icon(Icons.close, color: Colors.grey),
+                onPressed: onClear,
               );
             },
-          );
-        },
+          ),
+        ],
       ),
     );
   }
 }
+

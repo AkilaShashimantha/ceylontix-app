@@ -7,6 +7,7 @@ import '../../../domain/entities/booking.dart';
 import '../../../domain/repositories/auth_repository.dart';
 import 'login_or_register_screen.dart';
 import 'ticket_view_screen.dart';
+import '../../widgets/app_footer.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -44,6 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           return const LoginOrRegisterScreen();
         },
       ),
+     
     );
   }
 
@@ -141,6 +143,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           )
         ],
       ),
+      bottomNavigationBar: const AppFooter(),
     );
   }
 }
