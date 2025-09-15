@@ -85,18 +85,118 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       _showLoginPrompt();
       return;
     }
+
+    final details = await _promptUserDetails(initialName: currentUser.displayName, initialEmail: currentUser.email);
+    if (details == null) return; // cancelled
+
     setState(() => _isLoading = true);
 
-    // PLATFORM-AWARE LOGIC: Checks if the app is running on the web.
     if (kIsWeb) {
-      await _handleWebCheckout(currentUser);
+      await _handleWebCheckout(currentUser, details);
     } else {
-      _handleMobileCheckout(currentUser);
+      _handleMobileCheckout(currentUser, details);
     }
   }
 
+  Future<Map<String, String>?> _promptUserDetails({String? initialName, String? initialEmail}) async {
+    final nameParts = (initialName ?? '').trim().split(' ');
+    final firstNameController = TextEditingController(text: nameParts.isNotEmpty ? nameParts.first : '');
+    final lastNameController = TextEditingController(text: nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '');
+    final phoneController = TextEditingController();
+    final nicController = TextEditingController();
+    final addressController = TextEditingController();
+    final cityController = TextEditingController(text: 'Colombo');
+    final formKey = GlobalKey<FormState>();
+
+    return await showDialog<Map<String, String>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Your Details'),
+          content: SizedBox(
+            width: 400,
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: firstNameController,
+                      decoration: const InputDecoration(labelText: 'First Name'),
+                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    ),
+                    TextFormField(
+                      controller: lastNameController,
+                      decoration: const InputDecoration(labelText: 'Last Name'),
+                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    ),
+                    TextFormField(
+                      controller: phoneController,
+                      decoration: const InputDecoration(labelText: 'Phone Number'),
+                      keyboardType: TextInputType.phone,
+                      validator: (v) {
+                        final s = (v ?? '').trim();
+                        final reg = RegExp(r'^0\d{9}$');
+                        if (!reg.hasMatch(s)) return 'Enter valid 10-digit phone (starts with 0)';
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: nicController,
+                      decoration: const InputDecoration(labelText: 'NIC'),
+                      validator: (v) {
+                        final s = (v ?? '').trim();
+                        final oldNic = RegExp(r'^\d{9}[vVxX]$');
+                        final newNic = RegExp(r'^\d{12}$');
+                        if (!(oldNic.hasMatch(s) || newNic.hasMatch(s))) return 'Enter valid NIC (9 digits + V/X or 12 digits)';
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: addressController,
+                      decoration: const InputDecoration(labelText: 'Address'),
+                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    ),
+                    TextFormField(
+                      controller: cityController,
+                      decoration: const InputDecoration(labelText: 'City'),
+                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (formKey.currentState?.validate() == true) {
+                  Navigator.of(ctx).pop({
+                    'firstName': firstNameController.text.trim(),
+                    'lastName': lastNameController.text.trim(),
+                    'phone': phoneController.text.trim(),
+                    'nic': nicController.text.trim(),
+                    'address': addressController.text.trim(),
+                    'city': cityController.text.trim(),
+                  });
+                }
+              },
+              child: const Text('Continue'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // WEB FLOW: Create a pending booking, post to PayHere, and let notify_url confirm.
-  Future<void> _handleWebCheckout(currentUser) async {
+  Future<void> _handleWebCheckout(currentUser, Map<String, String> details) async {
     final orderId = const Uuid().v4();
     final totalAmount = _selectedTier!.price * _quantity;
     final merchantId = PayHereService.sandboxMerchantId;
@@ -104,7 +204,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     try {
       // 1) Create pending booking for server-side confirmation
-      await _createPendingBooking(orderId, currentUser, totalAmount);
+      await _createPendingBooking(orderId, currentUser, totalAmount, details: details);
 
       // 2) Compute hash per PayHere docs
       const payHereSecret = 'MzgxNjc1NDc1MzQwODQyMTI0NzAyMDk0MzUzNzQzMzcxMzU4OTI0MA==';
@@ -125,13 +225,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         'amount': amountStr,
         'currency': currency,
         'hash': hash,
-        'first_name': (currentUser.displayName ?? 'John Doe').trim().split(' ').first,
-        'last_name': (currentUser.displayName ?? 'John Doe').trim().split(' ').length > 1 ? (currentUser.displayName ?? 'John Doe').trim().split(' ').sublist(1).join(' ') : 'Doe',
+        'first_name': details['firstName']!,
+        'last_name': details['lastName']!,
         'email': currentUser.email ?? '',
-        'phone': '0771234567',
-        'address': 'No. 1, Galle Road',
-        'city': 'Colombo',
+        'phone': details['phone']!,
+        'address': details['address']!,
+        'city': details['city']!,
         'country': 'Sri Lanka',
+        'custom_1': details['nic']!,
       };
 
       final form = html.FormElement()
@@ -143,13 +244,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         'eventId': widget.event.id!,
         'eventName': widget.event.name,
         'userId': currentUser.uid,
-        'userName': currentUser.displayName ?? 'N/A',
+        'userName': '${details['firstName']!.trim()} ${details['lastName']!.trim()}'.trim(),
         'userEmail': currentUser.email ?? 'N/A',
+        'phone': details['phone'],
+        'address': details['address'],
+        'nic': details['nic'],
         'tierName': _selectedTier!.name,
-        'quantity': _quantity,
-        'totalPrice': totalAmount,
-        'bookingDate': DateTime.now().toIso8601String(),
-      };
+          'quantity': _quantity,
+          'totalPrice': totalAmount,
+          'bookingDate': DateTime.now().toIso8601String(),
+        };
       html.window.localStorage['ph_pending_' + orderId] = jsonEncode(pendingData);
 
       fields.forEach((name, value) {
@@ -177,7 +281,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
-  Future<void> _createPendingBooking(String orderId, dynamic currentUser, double totalAmount) async {
+  Future<void> _createPendingBooking(String orderId, dynamic currentUser, double totalAmount, {Map<String, String>? details}) async {
     try {
       await FirebaseFirestore.instance.collection('pending_bookings').doc(orderId).set({
         'orderId': orderId,
@@ -199,14 +303,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   // MOBILE FLOW: USES the native PayHere SDK.
-  void _handleMobileCheckout(currentUser) {
+  void _handleMobileCheckout(currentUser, Map<String, String> details) {
     final customerDetails = {
-      'firstName': currentUser.displayName?.split(' ').first ?? 'John',
-      'lastName': currentUser.displayName?.split(' ').last ?? 'Doe',
+      'firstName': details['firstName']!,
+      'lastName': details['lastName']!,
       'email': currentUser.email ?? 'no-email@test.com',
-      'phone': '0771234567',
-      'address': 'No. 1, Galle Road',
-      'city': 'Colombo'
+      'phone': details['phone']!,
+      'address': details['address']!,
+      'city': details['city'] ?? 'Colombo'
     };
     final orderId = const Uuid().v4();
     final totalAmount = _selectedTier!.price * _quantity;
@@ -217,7 +321,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       orderId: orderId,
       itemName: '${_quantity}x ${_selectedTier!.name} Ticket(s)',
       customerDetails: customerDetails,
-      onSuccess: (paymentId) => _createBookingInFirestore(currentUser),
+      onSuccess: (paymentId) => _createBookingInFirestore(currentUser, details),
       onError: (error) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -237,18 +341,23 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   // Creates the booking record in Firestore after a successful payment.
-  Future<void> _createBookingInFirestore(currentUser) async {
+  Future<void> _createBookingInFirestore(currentUser, [Map<String, String>? details]) async {
     try {
       final newBooking = Booking(
         eventId: widget.event.id!,
         eventName: widget.event.name,
         userId: currentUser.uid,
-        userName: currentUser.displayName ?? 'N/A',
+        userName: details != null && (details['firstName']?.isNotEmpty == true)
+            ? '${details['firstName']!.trim()} ${details['lastName']!.trim()}'.trim()
+            : (currentUser.displayName ?? 'N/A'),
         userEmail: currentUser.email ?? 'N/A',
         tierName: _selectedTier!.name,
         quantity: _quantity,
         totalPrice: _selectedTier!.price * _quantity,
         bookingDate: DateTime.now(),
+        phone: details?['phone'],
+        address: details?['address'],
+        nic: details?['nic'],
       );
 
       final newBookingId = await _bookingRepository.createBooking(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'dart:convert';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../domain/entities/booking.dart';
 
@@ -66,7 +67,18 @@ class TicketViewScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     QrImageView(
-                      data: bookingId, // The unique booking ID is the QR data
+                      data: jsonEncode({
+                        'bookingId': bookingId,
+                        'eventName': booking.eventName,
+                        'userName': booking.userName,
+                        'userEmail': booking.userEmail,
+                        'phone': booking.phone,
+                        'address': booking.address,
+                        'nic': booking.nic,
+                        'tier': booking.tierName,
+                        'quantity': booking.quantity,
+                        'bookingDate': booking.bookingDate.toIso8601String(),
+                      }),
                       version: QrVersions.auto,
                       size: math.min(screenSize.height * 0.5, screenSize.width * 0.8),
                       gapless: false,
