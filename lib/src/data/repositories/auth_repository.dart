@@ -65,7 +65,14 @@ class FirebaseAuthRepository implements AuthRepository {
     try {
       if (kIsWeb) {
         final provider = GoogleAuthProvider();
-        return await _firebaseAuth.signInWithPopup(provider);
+        final cred = await _firebaseAuth.signInWithPopup(provider);
+        final user = cred.user;
+        if (user != null && (user.displayName == null || user.displayName!.trim().isEmpty)) {
+          final email = user.email ?? '';
+          final guess = email.contains('@') ? email.split('@').first : 'User';
+          await user.updateDisplayName(guess);
+        }
+        return cred;
       }
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
@@ -76,7 +83,15 @@ class FirebaseAuthRepository implements AuthRepository {
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-      return await _firebaseAuth.signInWithCredential(credential);
+      final cred = await _firebaseAuth.signInWithCredential(credential);
+      final user = cred.user;
+      if (user != null && (user.displayName == null || user.displayName!.trim().isEmpty)) {
+        final dn = googleUser.displayName;
+        if (dn != null && dn.trim().isNotEmpty) {
+          await user.updateDisplayName(dn.trim());
+        }
+      }
+      return cred;
     } catch (e) {
       throw Exception('An error occurred during Google Sign-In. Please try again.');
     }

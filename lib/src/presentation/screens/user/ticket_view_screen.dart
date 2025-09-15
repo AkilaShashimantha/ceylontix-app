@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../domain/entities/booking.dart';
 
@@ -67,7 +68,7 @@ class TicketViewScreen extends StatelessWidget {
                     QrImageView(
                       data: bookingId, // The unique booking ID is the QR data
                       version: QrVersions.auto,
-                      size: screenSize.width * 0.5,
+                      size: math.min(screenSize.height * 0.5, screenSize.width * 0.8),
                       gapless: false,
                     ),
                     const SizedBox(height: 12),

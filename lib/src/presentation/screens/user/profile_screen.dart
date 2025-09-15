@@ -67,7 +67,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       : null,
                 ),
                 const SizedBox(height: 16),
-                Text(user.displayName ?? 'Welcome!',
+                Text('Welcome, ${user.displayName ?? 'Guest'}!',
                     style: const TextStyle(
                         fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
@@ -128,8 +128,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: ElevatedButton.icon(
-              icon: const Icon(Icons.logout),
-              label: const Text('Sign Out'),
+              icon: const Icon(Icons.logout,color:Color.fromARGB(255, 255, 255, 255)),
+              label:  Text('Sign Out', style: TextStyle(color: const Color.fromARGB(255, 255, 255, 255)),),
               onPressed: () async {
                 await _authRepository.signOut();
               },
