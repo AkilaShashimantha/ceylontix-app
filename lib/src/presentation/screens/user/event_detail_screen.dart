@@ -4,6 +4,7 @@ import 'dart:html' as html;
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ceylontix_app/src/domain/entities/booking.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -14,8 +15,10 @@ import '../../../domain/entities/event.dart';
 import '../../../domain/entities/ticket_tier.dart';
 import 'profile_screen.dart';
 import 'ticket_view_screen.dart';
+import 'payment_preview_screen.dart';
 import '../../../data/services/payhere_service.dart';
 import '../../../data/repositories/firebase_event_repository.dart';
+import '../../widgets/app_footer.dart';
 
 class EventDetailScreen extends StatefulWidget {
   final Event event;
@@ -32,9 +35,43 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   final FirebaseEventRepository _eventRepository = FirebaseEventRepository();
 
 
+
   TicketTier? _selectedTier;
   int _quantity = 1;
   bool _isLoading = false;
+
+  // Normalize common share links (Google Drive, FreeImage.host) to direct image URLs
+  String _resolveImageUrl(String url) {
+    // Google Drive shared links -> direct view
+    if (url.contains('drive.google.com')) {
+      final idMatch = RegExp(r"/d/([^/]+)").firstMatch(url) ??
+          RegExp(r"[?&]id=([a-zA-Z0-9_-]+)").firstMatch(url);
+      if (idMatch != null) {
+        final id = idMatch.group(1);
+        if (id != null && id.isNotEmpty) {
+          return 'https://drive.google.com/uc?export=view&id=$id';
+        }
+      }
+    }
+
+    // FreeImage.host share page -> iili.io direct image
+    if (url.contains('freeimage.host')) {
+      try {
+        final uri = Uri.parse(url);
+        final segments = uri.pathSegments;
+        if (segments.isNotEmpty) {
+          final last = segments.last; // e.g., KIH72Bs
+          final id = last.split('.').first; // strip any extension if present
+          if (RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(id)) {
+            // Use standard jpg; the CDN also supports size variants like .md.jpg
+            return 'https://iili.io/$id.jpg';
+          }
+        }
+      } catch (_) {}
+    }
+
+    return url;
+  }
 
   void _incrementQuantity() {
     if (_selectedTier != null && _quantity < _selectedTier!.quantity) {
@@ -91,11 +128,29 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     setState(() => _isLoading = true);
 
-    if (kIsWeb) {
-      await _handleWebCheckout(currentUser, details);
-    } else {
-      _handleMobileCheckout(currentUser, details);
-    }
+    // Show payment preview screen
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => PaymentPreviewScreen(
+          event: widget.event,
+          selectedTier: _selectedTier!,
+          quantity: _quantity,
+          userDetails: details,
+          onConfirmPayment: () async {
+            Navigator.of(context).pop(); // Close preview screen
+            
+            if (kIsWeb) {
+              await _handleWebCheckout(currentUser, details);
+            } else {
+              _handleMobileCheckout(currentUser, details);
+            }
+          },
+        ),
+      ),
+    ).then((_) {
+      // Reset loading state when user returns
+      if (mounted) setState(() => _isLoading = false);
+    });
   }
 
   Future<Map<String, String>?> _promptUserDetails({String? initialName, String? initialEmail}) async {
@@ -402,127 +457,179 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 .firstWhere((t) => t.name == _selectedTier!.name);
           }
 
-          return CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                expandedHeight: 300.0,
-                pinned: true,
-                flexibleSpace: FlexibleSpaceBar(
-                  title: Text(currentEvent.name,
-                      style: const TextStyle(
-                          shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
-                  background: Hero(
-                    tag: 'event_poster_${currentEvent.id}',
-                    child: Image.network(
-                      currentEvent.posterUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (ctx, err, st) => Container(
-                        color: Colors.grey[200],
-                        child: const Center(
-                            child: Icon(Icons.broken_image,
-                                color: Colors.grey, size: 50)),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+          return Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                          'Date: ${DateFormat.yMMMd().add_jm().format(currentEvent.date)}',
-                          style: const TextStyle(fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Text('Venue: ${currentEvent.venue}',
-                          style: const TextStyle(fontSize: 16)),
-                      const SizedBox(height: 16),
-                      Text(currentEvent.description,
-                          style:
-                              const TextStyle(fontSize: 16, height: 1.5)),
-                      const Divider(height: 40),
-                      const Text('Select Ticket Tier',
-                          style: TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 10),
-                      ...currentEvent.ticketTiers.map((tier) {
-                        final bool isAvailable = tier.quantity > 0;
-                        return RadioListTile<TicketTier>(
-                          title: Text(tier.name),
-                          subtitle: Text(
-                              'LKR ${tier.price.toStringAsFixed(2)} - ${isAvailable ? "${tier.quantity} available" : "Sold Out"}'),
-                          value: tier,
-                          groupValue: _selectedTier,
-                          onChanged: isAvailable
-                              ? (value) => setState(() {
-                                    _selectedTier = value;
-                                    _quantity = 1;
-                                  })
-                              : null,
-                          activeColor: Theme.of(context).primaryColor,
-                        );
-                      }),
-                      const SizedBox(height: 20),
-                      if (_selectedTier != null) ...[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            IconButton(
-                                onPressed: _decrementQuantity,
-                                icon:
-                                    const Icon(Icons.remove_circle_outline)),
-                            Text('$_quantity',
-                                style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold)),
-                            IconButton(
-                                onPressed: _incrementQuantity,
-                                icon: const Icon(Icons.add_circle_outline)),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                      ],
-                      Center(
-                        child: Column(
-                          children: [
-                            if (_selectedTier != null)
-                              Text(
-                                'Total: LKR ${(_selectedTier!.price * _quantity).toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            const SizedBox(height: 20),
-                            _isLoading
-                                ? const CircularProgressIndicator()
-                                : SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton.icon(
-                                      onPressed: _handleCheckout,
-                                      icon: const Icon(Icons
-                                          .shopping_cart_checkout),
-                                      label: const Text('Proceed to Checkout'),
-                                      style: ElevatedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 16),
-                                        textStyle:
-                                            const TextStyle(fontSize: 18),
-                                      ),
-                                    ),
+                      // Event Image at the top with back button overlay
+                      Stack(
+                        children: [
+                          Hero(
+                            tag: 'event_poster_${currentEvent.id}',
+                            child: Image.network(
+                              _resolveImageUrl(currentEvent.posterUrl),
+                              width: double.infinity,
+                              height: 300,
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Container(
+                                  width: double.infinity,
+                                  height: 300,
+                                  color: Colors.grey[200],
+                                  child: const Center(
+                                    child: CircularProgressIndicator(),
                                   ),
+                                );
+                              },
+                              errorBuilder: (ctx, err, st) => Container(
+                                width: double.infinity,
+                                height: 300,
+                                color: Colors.grey[200],
+                                child: const Center(
+                                    child: Icon(Icons.broken_image,
+                                        color: Colors.grey, size: 50)),
+                              ),
+                            ),
+                          ),
+                          // Back button
+                          Positioned(
+                            top: 40,
+                            left: 16,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: IconButton(
+                                icon: const Icon(
+                                  Icons.arrow_back,
+                                  color: Colors.white,
+                                ),
+                                onPressed: () => Navigator.of(context).pop(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      
+                      // Event Details
+                      Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Event Name
+                            Text(
+                              currentEvent.name,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            Text(
+                                'Date: ${DateFormat.yMMMd().add_jm().format(currentEvent.date)}',
+                                style: const TextStyle(fontSize: 16)),
+                            const SizedBox(height: 8),
+                            Text('Venue: ${currentEvent.venue}',
+                                style: const TextStyle(fontSize: 16)),
+                            const SizedBox(height: 16),
+                            Text(currentEvent.description,
+                                style:
+                                    const TextStyle(fontSize: 16, height: 1.5)),
+                            const Divider(height: 40),
+                            const Text('Select Ticket Tier',
+                                style: TextStyle(
+                                    fontSize: 20, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 10),
+                            ...currentEvent.ticketTiers.map((tier) {
+                              final bool isAvailable = tier.quantity > 0;
+                              return RadioListTile<TicketTier>(
+                                title: Text(tier.name),
+                                subtitle: Text(
+                                    'LKR ${tier.price.toStringAsFixed(2)} - ${isAvailable ? "${tier.quantity} available" : "Sold Out"}'),
+                                value: tier,
+                                groupValue: _selectedTier,
+                                onChanged: isAvailable
+                                    ? (value) => setState(() {
+                                          _selectedTier = value;
+                                          _quantity = 1;
+                                        })
+                                    : null,
+                                activeColor: Theme.of(context).primaryColor,
+                              );
+                            }),
+                            const SizedBox(height: 20),
+                            if (_selectedTier != null) ...[
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  IconButton(
+                                      onPressed: _decrementQuantity,
+                                      icon:
+                                          const Icon(Icons.remove_circle_outline)),
+                                  Text('$_quantity',
+                                      style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold)),
+                                  IconButton(
+                                      onPressed: _incrementQuantity,
+                                      icon: const Icon(Icons.add_circle_outline)),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                            ],
+                            Center(
+                              child: Column(
+                                children: [
+                                  if (_selectedTier != null)
+                                    Text(
+                                      'Total: LKR ${(_selectedTier!.price * _quantity).toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  const SizedBox(height: 20),
+                                  _isLoading
+                                      ? const CircularProgressIndicator()
+                                      : SizedBox(
+                                          width: double.infinity,
+                                          child: ElevatedButton.icon(
+                                            onPressed: _handleCheckout,
+                                            icon: const Icon(Icons
+                                                .shopping_cart_checkout),
+                                            label: const Text('Proceed to Checkout'),
+                                            style: ElevatedButton.styleFrom(
+                                              padding: const EdgeInsets.symmetric(
+                                                  vertical: 16),
+                                              textStyle:
+                                                  const TextStyle(fontSize: 18),
+                                            ),
+                                          ),
+                                        ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),
+                        const AppFooter(),
                     ],
-                  ),
+                  ),                
                 ),
-              )
-            ],
+              ),
+           ],
           );
         },
       ),
     );
   }
 }
+
+
+

@@ -142,13 +142,18 @@ class _EventsListScreenState extends State<EventsListScreen> {
           preferredSize: Size.fromHeight(isDesktop ? 80 : 70),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: _SearchBar(
-              controller: _searchController,
-              isDesktop: isDesktop,
-              onClear: () {
-                _searchController.clear();
-                FocusScope.of(context).unfocus();
-              },
+            child: Center(
+              child: SizedBox(
+                width: width * 0.5, // Half of screen width
+                child: _SearchBar(
+                  controller: _searchController,
+                  isDesktop: isDesktop,
+                  onClear: () {
+                    _searchController.clear();
+                    FocusScope.of(context).unfocus();
+                  },
+                ),
+              ),
             ),
           ),
         ),
@@ -233,55 +238,69 @@ class _EventsListScreenState extends State<EventsListScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                int crossAxisCount;
-                if (constraints.maxWidth > 1200) {
-                  crossAxisCount = 4;
-                } else if (constraints.maxWidth > 800) {
-                  crossAxisCount = 3;
-                } else {
-                  crossAxisCount = 2;
-                }
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          int crossAxisCount;
+          if (constraints.maxWidth > 1200) {
+            crossAxisCount = 4;
+          } else if (constraints.maxWidth > 800) {
+            crossAxisCount = 3;
+          } else {
+            crossAxisCount = 2;
+          }
 
-                return StreamBuilder<List<Event>>(
-                  stream: _eventRepository.getEventsStream(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (snapshot.hasError) {
-                      return Center(child: Text('An error occurred: ${snapshot.error}'));
-                    }
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return const Center(
+          return StreamBuilder<List<Event>>(
+            stream: _eventRepository.getEventsStream(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('An error occurred: ${snapshot.error}'));
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Column(
+                  children: [
+                    Expanded(
+                      child: Center(
                         child: Text(
                           'No events available at the moment.',
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 18, color: Colors.grey),
                         ),
-                      );
-                    }
+                      ),
+                    ),
+                    AppFooter(),
+                  ],
+                );
+              }
 
-                    final events = snapshot.data!;
-                    final filtered = _query.isEmpty
-                        ? events
-                        : events.where((e) => e.name.toLowerCase().contains(_query)).toList();
+              final events = snapshot.data!;
+              final filtered = _query.isEmpty
+                  ? events
+                  : events.where((e) => e.name.toLowerCase().contains(_query)).toList();
 
-                    if (filtered.isEmpty) {
-                      return const Center(
+              if (filtered.isEmpty) {
+                return const Column(
+                  children: [
+                    Expanded(
+                      child: Center(
                         child: Text('No events match your search.', style: TextStyle(color: Colors.grey)),
-                      );
-                    }
+                      ),
+                    ),
+                    AppFooter(),
+                  ],
+                );
+              }
 
-                    final sidePad = constraints.maxWidth >= 1200
-                        ? constraints.maxWidth * (2 / 12)
-                        : 16.0;
+              final sidePad = constraints.maxWidth >= 1200
+                  ? constraints.maxWidth * (2 / 12)
+                  : 16.0;
 
-                    return GridView.builder(
+              return Column(
+                children: [
+                  Expanded(
+                    child: GridView.builder(
                       padding: EdgeInsets.fromLTRB(sidePad, 16, sidePad, 16),
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: crossAxisCount,
@@ -303,15 +322,15 @@ class _EventsListScreenState extends State<EventsListScreen> {
                           },
                         );
                       },
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
+                    ),
+                  ),
+                  const AppFooter(),
+                ],
+              );
+            },
+          );
+        },
       ),
-      bottomNavigationBar: const AppFooter(),
     );
   }
 }

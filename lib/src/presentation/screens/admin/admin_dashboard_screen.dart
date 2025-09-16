@@ -4,6 +4,8 @@ import '../../../data/repositories/firebase_event_repository.dart';
 import '../../../domain/entities/event.dart';
 import 'add_event_screen.dart';
 import 'edit_event_screen.dart';
+import 'sales_report_screen.dart';
+import 'qr_scanner_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({Key? key}) : super(key: key);
@@ -92,14 +94,41 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         title: const Text('Admin Dashboard', style: TextStyle(color: Color.fromARGB(247, 255, 255, 255),fontWeight: FontWeight.bold)),
         backgroundColor: Theme.of(context).primaryColor,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              await _authRepository.signOut();
-              if (!context.mounted) return;
-              Navigator.of(context).popUntil((route) => route.isFirst);
-            },
-            tooltip: 'Logout',
+          Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: TextButton.icon(
+              icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+              label: const Text('Scan QR', style: TextStyle(color: Colors.white)),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const QRScannerScreen()),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: TextButton.icon(
+              icon: const Icon(Icons.analytics, color: Colors.white),
+              label: const Text('Reports', style: TextStyle(color: Colors.white)),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const SalesReportScreen()),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: TextButton.icon(
+              icon: const Icon(Icons.logout, color: Colors.white),
+              label: const Text('Logout', style: TextStyle(color: Colors.white)),
+              onPressed: () async {
+                await _authRepository.signOut();
+                if (!context.mounted) return;
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              },
+            ),
           ),
         ],
       ),
@@ -147,20 +176,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   subtitle: Text('${event.venue}\n${_formatDateTime(event.date)}'),
                   isThreeLine: true,
                   trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined, color: Colors.blueGrey),
-                        onPressed: () => _navigateToEditScreen(event),
-                        tooltip: 'Edit Event',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_sweep_outlined, color: Colors.redAccent),
-                        onPressed: () => _confirmDelete(event),
-                        tooltip: 'Delete Event',
-                      ),
-                    ],
-                  ),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                  ElevatedButton.icon(
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Edit'),
+                  onPressed: () => _navigateToEditScreen(event),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueGrey,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    minimumSize: const Size(80, 36),
+                    ),
+                    ),
+                      const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                          label: const Text('Delete'),
+                          onPressed: () => _confirmDelete(event),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            minimumSize: const Size(80, 36),
+                          ),
+                        ),
+                      ],
+                    ),
                 ),
               );
             },
