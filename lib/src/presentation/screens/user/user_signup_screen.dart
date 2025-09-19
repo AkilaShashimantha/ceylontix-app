@@ -5,7 +5,7 @@ import '../../widgets/custom_textfield.dart';
 
 class UserSignUpScreen extends StatefulWidget {
     final VoidCallback onTap;
-    const UserSignUpScreen({Key? key, required this.onTap}) : super(key: key);
+    const UserSignUpScreen({super.key, required this.onTap});
 
     @override
     State<UserSignUpScreen> createState() => _UserSignUpScreenState();

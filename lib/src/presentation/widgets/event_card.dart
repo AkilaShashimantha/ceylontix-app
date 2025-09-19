@@ -5,7 +5,7 @@ import '../screens/user/event_detail_screen.dart';
 class EventCard extends StatelessWidget {
   final Event event;
   final VoidCallback? onTap;
-  const EventCard({Key? key, required this.event, this.onTap}) : super(key: key);
+  const EventCard({super.key, required this.event, this.onTap});
 
   String _formatDate(DateTime dt) {
     String two(int n) => n.toString().padLeft(2, '0');

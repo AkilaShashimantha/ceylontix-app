@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
     import 'user_signup_screen.dart';
 
     class LoginOrRegisterScreen extends StatefulWidget {
-      const LoginOrRegisterScreen({Key? key}) : super(key: key);
+      const LoginOrRegisterScreen({super.key});
 
       @override
       State<LoginOrRegisterScreen> createState() => _LoginOrRegisterScreenState();

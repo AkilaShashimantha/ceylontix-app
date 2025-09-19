@@ -9,7 +9,7 @@ import '../../../data/repositories/firebase_event_repository.dart';
 import '../../../domain/entities/event.dart';
 
 class SalesReportScreen extends StatefulWidget {
-  const SalesReportScreen({Key? key}) : super(key: key);
+  const SalesReportScreen({super.key});
 
   @override
   State<SalesReportScreen> createState() => _SalesReportScreenState();
@@ -624,7 +624,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   if (salesSnapshot.connectionState == ConnectionState.waiting) {
                     return Card(
                       margin: const EdgeInsets.all(8),
-                      child: Container(
+                      child: SizedBox(
                         height: 100,
                         child: const Center(child: CircularProgressIndicator()),
                       ),
@@ -633,7 +633,7 @@ class _SalesReportScreenState extends State<SalesReportScreen> {
                   if (salesSnapshot.hasError) {
                     return Card(
                       margin: const EdgeInsets.all(8),
-                      child: Container(
+                      child: SizedBox(
                         height: 100,
                         child: Center(
                           child: Text('Error loading data: ${salesSnapshot.error}'),

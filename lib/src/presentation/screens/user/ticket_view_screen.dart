@@ -9,10 +9,10 @@ class TicketViewScreen extends StatelessWidget {
   final String bookingId;
 
   const TicketViewScreen({
-    Key? key,
+    super.key,
     required this.booking,
     required this.bookingId,
-  }) : super(key: key);
+  });
 
   String _formatDate(DateTime dt) {
     String two(int n) => n.toString().padLeft(2, '0');

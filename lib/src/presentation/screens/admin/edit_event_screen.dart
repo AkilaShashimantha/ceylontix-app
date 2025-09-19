@@ -7,7 +7,7 @@ import '../../widgets/custom_textfield.dart';
 
 class EditEventScreen extends StatefulWidget {
   final Event event;
-  const EditEventScreen({Key? key, required this.event}) : super(key: key);
+  const EditEventScreen({super.key, required this.event});
 
   @override
   State<EditEventScreen> createState() => _EditEventScreenState();

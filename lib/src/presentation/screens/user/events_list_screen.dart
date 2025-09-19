@@ -13,7 +13,7 @@ import '../../../data/repositories/auth_repository.dart';
 import '../../widgets/app_footer.dart';
 
 class EventsListScreen extends StatefulWidget {
-  const EventsListScreen({Key? key}) : super(key: key);
+  const EventsListScreen({super.key});
 
   @override
   State<EventsListScreen> createState() => _EventsListScreenState();
@@ -58,7 +58,7 @@ class _EventsListScreenState extends State<EventsListScreen> {
         data = snap.data() as Map<String, dynamic>;
       } else {
         // fallback to localStorage if pending doc was not created due to rules
-        final key = 'ph_pending_' + orderId;
+        final key = 'ph_pending_$orderId';
         final raw = html.window.localStorage[key];
         if (raw != null) {
           data = Map<String, dynamic>.from(jsonDecode(raw) as Map<String, dynamic>);
@@ -76,23 +76,23 @@ class _EventsListScreenState extends State<EventsListScreen> {
         final List<dynamic> tiers = List<dynamic>.from(eventData['ticketTiers']);
         final int idx = tiers.indexWhere((e) => e['name'] == data!['tierName']);
         if (idx == -1) throw Exception('Tier not found');
-        if ((tiers[idx]['quantity'] as int) < (data!['quantity'] as int)) {
+        if ((tiers[idx]['quantity'] as int) < (data['quantity'] as int)) {
           throw Exception('Not enough tickets');
         }
-        tiers[idx]['quantity'] = (tiers[idx]['quantity'] as int) - (data!['quantity'] as int);
+        tiers[idx]['quantity'] = (tiers[idx]['quantity'] as int) - (data['quantity'] as int);
         t.update(eventRef, {'ticketTiers': tiers});
 
         final bookingRef = FirebaseFirestore.instance.collection('bookings').doc(orderId);
         t.set(bookingRef, {
-          'eventId': data!['eventId'],
-          'eventName': data!['eventName'],
-          'userId': data!['userId'],
-          'userName': data!['userName'],
-          'userEmail': data!['userEmail'],
-          'tierName': data!['tierName'],
-          'quantity': data!['quantity'],
-          'totalPrice': (data!['totalPrice'] as num).toDouble(),
-          'bookingDate': Timestamp.fromDate(DateTime.parse(data!['bookingDate'] ?? DateTime.now().toIso8601String())),
+          'eventId': data['eventId'],
+          'eventName': data['eventName'],
+          'userId': data['userId'],
+          'userName': data['userName'],
+          'userEmail': data['userEmail'],
+          'tierName': data['tierName'],
+          'quantity': data['quantity'],
+          'totalPrice': (data['totalPrice'] as num).toDouble(),
+          'bookingDate': Timestamp.fromDate(DateTime.parse(data['bookingDate'] ?? DateTime.now().toIso8601String())),
           'status': 'confirmed',
         });
         if (snap.exists) {
@@ -101,7 +101,7 @@ class _EventsListScreenState extends State<EventsListScreen> {
       });
 
       // cleanup localStorage
-      html.window.localStorage.remove('ph_pending_' + orderId);
+      html.window.localStorage.remove('ph_pending_$orderId');
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment confirmed. Booking created.')));

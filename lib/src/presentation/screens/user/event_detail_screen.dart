@@ -309,7 +309,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           'totalPrice': totalAmount,
           'bookingDate': DateTime.now().toIso8601String(),
         };
-      html.window.localStorage['ph_pending_' + orderId] = jsonEncode(pendingData);
+      html.window.localStorage['ph_pending_$orderId'] = jsonEncode(pendingData);
 
       fields.forEach((name, value) {
         final input = html.InputElement(type: 'hidden')
